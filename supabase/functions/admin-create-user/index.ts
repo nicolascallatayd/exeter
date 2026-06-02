@@ -96,7 +96,7 @@ serve(async (req) => {
       email,
       full_name:       full_name || null,
       profile_data:    profileData,
-      approval_status: "pending",
+      approval_status: "approved",
     };
 
     const { error: updateError, count } = await supabaseAdmin
