@@ -122,6 +122,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`realtime:profile:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
+        (payload) => {
+          if (payload.new) {
+            setProfile(payload.new as Profile);
+          } else if (payload.old && !payload.new) {
+            setProfile(null);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   // ── Refresh profile ───────────────────────────────────────
 
   const refreshProfile = async () => {
