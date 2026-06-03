@@ -86,7 +86,32 @@ export const adminKeys = {
   cardPayments: (s?: string)  => ["admin", "card_payments", s ?? "all"] as const,
   supportThreads: (s?: string) => ["admin", "support_threads", s ?? "all"] as const,
   supportMessages: (id: string) => ["admin", "support_messages", id] as const,
+  pendingTransfers: ()         => ["admin", "pending_transfers"] as const,
 };
+
+export interface AdminPendingTransfer {
+  id: string;
+  user_id: string;
+  from_account_id: string;
+  to_account_id: string | null;
+  transfer_type: "own" | "external";
+  amount: number;
+  note: string | null;
+  reference: string;
+  beneficiary_name: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  status: "pending" | "approved" | "rejected";
+  review_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  from_account_name: string;
+  from_account_number: string;
+  from_account_balance: number;
+  to_account_name: string | null;
+  user_email: string | null;
+  user_full_name: string | null;
+}
 
 // ─── Is admin ─────────────────────────────────────────────────
 
@@ -613,6 +638,77 @@ export const useAdminGenerateTransferOtp = () => {
       const r = data as { ok: boolean; code?: string; error?: string };
       if (!r.ok) throw new Error(r.error ?? "Failed to generate OTP");
       return r;
+    },
+  });
+};
+
+// ─── Admin set per-account pending-review message ────────────────
+export const useAdminSetTransferPendingMessage = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, message }: { accountId: string; message: string }) => {
+      const { data, error } = await supabase.rpc("admin_set_transfer_pending_message", {
+        p_account_id: accountId,
+        p_message: message,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as { ok: boolean; error?: string };
+      if (!r.ok) throw new Error(r.error ?? "Failed to save message");
+      return r;
+    },
+    onSuccess: (_d, variables) => {
+      // refresh whichever account list might be showing this account
+      qc.invalidateQueries({ queryKey: adminKeys.allAccounts() });
+      void variables;
+    },
+  });
+};
+
+// ─── Admin pending-transfer review ───────────────────────────────
+export const useAdminPendingTransfers = () => {
+  return useQuery({
+    queryKey: adminKeys.pendingTransfers(),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_list_pending_transfers");
+      if (error) throw new Error(error.message);
+      return (data ?? []) as unknown as AdminPendingTransfer[];
+    },
+  });
+};
+
+export const useAdminApproveTransfer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc("admin_approve_transfer", { p_id: id });
+      if (error) throw new Error(error.message);
+      const r = data as { ok: boolean; error?: string; reference?: string };
+      if (!r.ok) throw new Error(r.error ?? "Failed to approve transfer");
+      return r;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.pendingTransfers() });
+      qc.invalidateQueries({ queryKey: adminKeys.allAccounts() });
+      qc.invalidateQueries({ queryKey: adminKeys.allTxns() });
+    },
+  });
+};
+
+export const useAdminRejectTransfer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, note }: { id: string; note?: string }) => {
+      const { data, error } = await supabase.rpc("admin_reject_transfer", {
+        p_id: id,
+        p_note: note ?? null,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as { ok: boolean; error?: string; reference?: string };
+      if (!r.ok) throw new Error(r.error ?? "Failed to reject transfer");
+      return r;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.pendingTransfers() });
     },
   });
 };

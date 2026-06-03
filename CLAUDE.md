@@ -69,7 +69,7 @@ When an account has `requires_transfer_otp = true`, the frontend first calls `su
 
 ### Migrations
 
-New migrations go in `supabase/migrations/` with a `YYYYMMDD_description.sql` filename. They are applied manually via Supabase CLI (`supabase db push`) or the Supabase dashboard.
+New migrations go in `supabase/migrations/` with a `YYYYMMDDHHMMSS_description.sql` filename (full timestamp, not just the date). Supabase derives the migration *version* from the leading number, so two files sharing the same `YYYYMMDD` prefix collide with a `schema_migrations_pkey` duplicate-key error on `db push` — always use the full `YYYYMMDDHHMMSS` form to guarantee unique, ordered versions. They are applied manually via Supabase CLI (`supabase db push`) or the Supabase dashboard.
 
 ### UI conventions
 

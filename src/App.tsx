@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SupportProvider } from "@/components/SupportContactModal";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Public
 import Index from "./pages/Index.tsx";
@@ -29,6 +30,7 @@ import AdminLayout from "./layouts/AdminLayout.tsx";
 import AdminOverview from "./pages/admin/AdminOverview.tsx";
 import AdminUsers from "./pages/admin/AdminUsers.tsx";
 import AdminTransactions from "./pages/admin/AdminTransactions.tsx";
+import AdminPendingTransfers from "./pages/admin/AdminPendingTransfers.tsx";
 import AdminCardPayments from "./pages/admin/AdminCardPayments.tsx";
 import AdminAccounts from "./pages/admin/AdminAccounts.tsx";
 import AdminSupport from "./pages/admin/AdminSupport.tsx";
@@ -44,6 +46,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <ErrorBoundary>
         <AuthProvider>
           <SupportProvider>
             <Routes>
@@ -77,6 +80,7 @@ const App = () => (
               <Route index element={<AdminOverview />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="transactions" element={<AdminTransactions />} />
+              <Route path="transfer-reviews" element={<AdminPendingTransfers />} />
               <Route path="payments" element={<AdminCardPayments />} />
               <Route path="accounts" element={<AdminAccounts />} />
               <Route path="support" element={<AdminSupport />} />
@@ -87,6 +91,7 @@ const App = () => (
             </Routes>
           </SupportProvider>
         </AuthProvider>
+        </ErrorBoundary>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Loader2, Users, ArrowUpRight, ArrowDownLeft,
   Plus, Trash2, Upload, X, CheckCircle2, ExternalLink,
-  ShieldCheck, ShieldAlert, Snowflake, PauseCircle, Clock, Key,
+  ShieldCheck, ShieldAlert, Snowflake, PauseCircle, Clock, Key, MessageSquare,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   useAdminUsers, useAdminUserAccounts, useAdminUserTransactions,
   useAdminAdjustBalance, useAdminCreateUser, useAdminUpdateUser,
   useAdminDeleteUser, useAdminSetUserStatus, useAdminGenerateTransferOtp,
-  type AdminUser, type AdminUserStatus,
+  useAdminSetTransferPendingMessage,
+  adminKeys, type AdminUser, type AdminUserStatus,
 } from "@/hooks/useAdmin";
 import { uploadKycDocuments, type KycDocument } from "@/lib/cloudinary";
 import { supabase } from "@/lib/supabase";
@@ -163,6 +165,7 @@ const CreateUserDialog = ({
   onOpenChange: (open: boolean) => void;
 }) => {
   const createUser = useAdminCreateUser();
+  const queryClient = useQueryClient();
 
   const [fullName,     setFullName]     = useState("");
   const [email,        setEmail]        = useState("");
@@ -219,13 +222,22 @@ const CreateUserDialog = ({
         userId
       );
 
-      // Store structured doc list in profile_data
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ profile_data: { kyc_documents: kycDocs } })
-        .eq("id", userId);
+      // Store structured doc list in profile_data. Must go through an admin
+      // RPC: a direct UPDATE runs under the admin's session and RLS blocks
+      // writes to another user's profile row (0 rows, no error).
+      const { data: kycResult, error: updateError } = await supabase.rpc(
+        "admin_set_kyc_documents",
+        { p_user_id: userId, p_docs: kycDocs }
+      );
 
       if (updateError) throw updateError;
+      const kr = kycResult as { ok: boolean; error?: string };
+      if (!kr?.ok) throw new Error(kr?.error ?? "Failed to save KYC documents.");
+
+      // Refetch the user list now that docs are saved. The mutation's own
+      // onSuccess invalidation fires before the upload/save completes, so the
+      // list would otherwise show the new user without their documents.
+      await queryClient.invalidateQueries({ queryKey: adminKeys.users() });
 
       toast.success("User created successfully.");
       resetForm();
@@ -345,6 +357,8 @@ const UserDetail = ({
   const deleteUser   = useAdminDeleteUser();
   const setStatus    = useAdminSetUserStatus();
   const generateOtp  = useAdminGenerateTransferOtp();
+  const setPendingMsg = useAdminSetTransferPendingMessage();
+  const qc           = useQueryClient();
 
   const [selectedAccId, setSelectedAccId] = useState<string | null>(null);
   const [adjAmount,  setAdjAmount]  = useState("");
@@ -356,6 +370,7 @@ const UserDetail = ({
   const [confirmDelete,  setConfirmDelete]  = useState(false);
   const [pendingStatus,  setPendingStatus]  = useState<AdminUserStatus | null>(null);
   const [otpByAccount,   setOtpByAccount]   = useState<Record<string, string>>({});
+  const [msgByAccount,   setMsgByAccount]   = useState<Record<string, string>>({});
 
   useEffect(() => {
     setFullName(user.full_name ?? "");
@@ -555,6 +570,54 @@ const UserDetail = ({
                           {generateOtp.isPending ? <Loader2 size={11} className="animate-spin" /> : "Generate"}
                         </Button>
                       </div>
+                      {/* Per-account pending-review message */}
+                      {(() => {
+                        const currentMsg = (a as { transfer_pending_message?: string | null }).transfer_pending_message ?? "";
+                        const value = msgByAccount[a.id] ?? currentMsg;
+                        const dirty = value !== currentMsg;
+                        return (
+                          <div className="border-t border-border/20 px-4 py-2.5 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <MessageSquare size={13} className="shrink-0 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Transfer "pending review" message shown to this user</span>
+                            </div>
+                            <textarea
+                              value={value}
+                              onChange={(e) => setMsgByAccount((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                              placeholder="Leave blank to use the default pending-review message."
+                              rows={2}
+                              className="w-full rounded border border-border/50 bg-muted/30 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none"
+                            />
+                            <div className="flex justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                disabled={setPendingMsg.isPending || !dirty}
+                                onClick={() =>
+                                  setPendingMsg.mutate(
+                                    { accountId: a.id, message: value },
+                                    {
+                                      onSuccess: () => {
+                                        toast.success("Pending-review message saved.");
+                                        setMsgByAccount((prev) => {
+                                          const next = { ...prev };
+                                          delete next[a.id];
+                                          return next;
+                                        });
+                                        qc.invalidateQueries({ queryKey: adminKeys.userAccounts(user.id) });
+                                      },
+                                      onError: (e: Error) => toast.error(e.message),
+                                    }
+                                  )
+                                }
+                              >
+                                {setPendingMsg.isPending ? <Loader2 size={11} className="animate-spin" /> : "Save message"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

@@ -170,8 +170,12 @@ const DashboardOverview = () => {
                     {tx.type === "credit" ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                    <p className="text-xs text-muted-foreground">{tx.category}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {tx.category === "Admin" ? (tx.type === "credit" ? "Credit" : "Debit") : tx.name}
+                    </p>
+                    {tx.category !== "Admin" && (
+                      <p className="text-xs text-muted-foreground">{tx.category}</p>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">

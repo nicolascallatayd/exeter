@@ -107,6 +107,9 @@ interface InternalTransferArgs {
 interface TransferResult {
   ok:         boolean;
   error?:     string;
+  pending?:   boolean;
+  reference?: string;
+  message?:   string | null;
   debit_id?:  string;
   credit_id?: string;
   from_name?: string;
@@ -273,6 +276,8 @@ interface ExternalTransferArgs {
 interface ExternalTransferResult {
   ok:              boolean;
   error?:          string;
+  pending?:        boolean;
+  message?:        string | null;
   transfer_id?:    string;
   tx_id?:          string;
   reference?:      string;

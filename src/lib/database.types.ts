@@ -738,6 +738,10 @@ export type Database = {
         Args: { p_note?: string; p_payment_id: string }
         Returns: Json
       }
+      admin_set_kyc_documents: {
+        Args: { p_user_id: string; p_docs: Json }
+        Returns: Json
+      }
       admin_approve_deposit: {
         Args: { p_deposit_id: string; p_note?: string }
         Returns: Json

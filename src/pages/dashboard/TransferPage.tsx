@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import {
   ArrowRight, Check, ChevronLeft, Search, DollarSign,
   AlertCircle, Loader2, ArrowLeftRight, Building2,
-  User, Plus, Star, Trash2, ArrowDownLeft, RefreshCw, KeyRound,
+  User, Plus, Star, Trash2, ArrowDownLeft, RefreshCw, KeyRound, Clock,
 } from "lucide-react";
 import {
   useAccounts, useTransfer, useRealtimeAccounts,
@@ -17,6 +17,9 @@ import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 
 // ─── Transfer mode ────────────────────────────────────────────
+
+const DEFAULT_PENDING_MESSAGE =
+  "Your transfer has been submitted and is now pending review. Funds will be released once it has been approved by our team.";
 
 type TransferMode = "own" | "external" | "deposit";
 type OwnStep     = "from" | "to"   | "amount"  | "confirm" | "success";
@@ -139,7 +142,7 @@ const TransferPage = () => {
   const [fromId, setFromId]       = useState<string | null>(null);
   const [amount, setAmount]       = useState("");
   const [note, setNote]           = useState("");
-  const [successData, setSuccess] = useState<{ ref: string; to: string; amount: string } | null>(null);
+  const [successData, setSuccess] = useState<{ ref: string; to: string; amount: string; pending?: boolean; message?: string | null } | null>(null);
   const [otpCode, setOtpCode] = useState("");
   // ── Own account transfer state ─────────────────────────────
   const [ownStep, setOwnStep] = useState<OwnStep>("from");
@@ -198,7 +201,13 @@ const TransferPage = () => {
       { fromAccountId: fromId, toAccountId: toId, amount: parsedAmount, note: note || undefined, otpCode: otpCode || undefined },
       {
         onSuccess: (data) => {
-          setSuccess({ ref: `TXN-${data.debit_id?.slice(0,8).toUpperCase()}`, to: data.to_name ?? "", amount: fmtAmount });
+          setSuccess({
+            ref:     data.reference ?? "—",
+            to:      data.to_name ?? "",
+            amount:  fmtAmount,
+            pending: data.pending,
+            message: data.message,
+          });
           setOwnStep("success");
         },
         onError: (e: Error) => toast.error(e.message),
@@ -226,9 +235,11 @@ const TransferPage = () => {
       {
         onSuccess: (data) => {
           setSuccess({
-            ref:    data.reference ?? "—",
-            to:     bene ? bene.full_name : recipientName,
-            amount: fmtAmount,
+            ref:     data.reference ?? "—",
+            to:      bene ? bene.full_name : recipientName,
+            amount:  fmtAmount,
+            pending: data.pending,
+            message: data.message,
           });
           setExtStep("success");
         },
@@ -579,10 +590,13 @@ const TransferPage = () => {
           {ownStep === "success" && successData && (
             <motion.div key="own-success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
               className="rounded border border-border/40 bg-gradient-card p-8 text-center space-y-4">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"><Check size={32} className="text-primary" /></div>
-              <h2 className="font-display text-xl font-bold text-foreground">Transfer Complete!</h2>
-              <p className="text-sm text-muted-foreground">{successData.amount} sent to <span className="font-medium text-foreground">{successData.to}</span>. Both balances updated.</p>
-              <p className="text-xs text-muted-foreground">{successData.ref}</p>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10"><Clock size={32} className="text-amber-500" /></div>
+              <h2 className="font-display text-xl font-bold text-foreground">Transfer Pending Review</h2>
+              <p className="text-sm text-muted-foreground">
+                {successData.amount} to <span className="font-medium text-foreground">{successData.to}</span>
+              </p>
+              <p className="mx-auto max-w-sm text-sm text-muted-foreground">{successData.message || DEFAULT_PENDING_MESSAGE}</p>
+              <p className="font-mono text-xs text-muted-foreground">Ref: {successData.ref}</p>
               <div className="flex gap-3 pt-2">
                 <Button variant="hero" className="flex-1" onClick={resetAll}>New Transfer</Button>
                 <Button variant="heroOutline" className="flex-1" onClick={() => window.history.back()}>Dashboard</Button>
@@ -832,11 +846,12 @@ const TransferPage = () => {
         {extStep === "success" && successData && (
           <motion.div key="ext-success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
             className="rounded border border-border/40 bg-gradient-card p-8 text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"><Check size={32} className="text-primary" /></div>
-            <h2 className="font-display text-xl font-bold text-foreground">Transfer Sent!</h2>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10"><Clock size={32} className="text-amber-500" /></div>
+            <h2 className="font-display text-xl font-bold text-foreground">Transfer Pending Review</h2>
             <p className="text-sm text-muted-foreground">
-              {successData.amount} has been sent to <span className="font-medium text-foreground">{successData.to}</span>.
+              {successData.amount} to <span className="font-medium text-foreground">{successData.to}</span>
             </p>
+            <p className="mx-auto max-w-sm text-sm text-muted-foreground">{successData.message || DEFAULT_PENDING_MESSAGE}</p>
             <p className="font-mono text-xs text-muted-foreground">Ref: {successData.ref}</p>
             <div className="flex gap-3 pt-2">
               <Button variant="hero" className="flex-1" onClick={resetAll}>New Transfer</Button>

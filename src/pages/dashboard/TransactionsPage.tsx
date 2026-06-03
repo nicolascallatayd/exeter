@@ -82,7 +82,9 @@ const TransactionsPage = () => {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">{tx.name}</p>
-                    <p className="text-xs text-muted-foreground">{tx.category}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {tx.category === "Admin" ? "Internal Systems" : tx.category}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">

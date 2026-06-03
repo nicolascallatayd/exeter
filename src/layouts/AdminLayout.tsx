@@ -1,7 +1,7 @@
 import { Outlet, Navigate, NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Users, ArrowLeftRight,
-  CreditCard, Wallet, Shield, LogOut, Menu, X, MessageSquare, Settings,
+  CreditCard, Wallet, Shield, LogOut, Menu, X, MessageSquare, Settings, Clock,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useAdmin";
@@ -13,6 +13,7 @@ const navItems = [
   { label: "Overview",      icon: LayoutDashboard, path: "/admin"              },
   { label: "Users",         icon: Users,           path: "/admin/users"        },
   { label: "Transactions",  icon: ArrowLeftRight,  path: "/admin/transactions" },
+  { label: "Transfer Reviews", icon: Clock,        path: "/admin/transfer-reviews" },
   { label: "Card Payments", icon: CreditCard,      path: "/admin/payments"     },
   { label: "Accounts",      icon: Wallet,          path: "/admin/accounts"     },
     { label: "Support",       icon: MessageSquare,   path: "/admin/support"      },
