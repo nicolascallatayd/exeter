@@ -11,6 +11,7 @@ export interface AdminUser {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url: string | null;
   has_profile: boolean;
   created_at: string;
   account_count: number;
@@ -254,6 +255,33 @@ export const useAdminUpdateUser = () => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Failed to update user");
       return result;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: adminKeys.users() }),
+  });
+};
+
+// Admin edit of a user's full_name / avatar / profile_data fields. Unlike the
+// user-facing self-edit, this does NOT change approval_status. Email changes
+// still go through the admin-update-user edge function (auth-level).
+export const useAdminUpdateProfile = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      userId: string;
+      full_name?: string | null;
+      avatar_url?: string | null;
+      profile_data?: Record<string, unknown> | null;
+    }) => {
+      const { data, error } = await supabase.rpc("admin_update_profile", {
+        p_user_id:      p.userId,
+        p_full_name:    p.full_name ?? null,
+        p_avatar_url:   p.avatar_url ?? null,
+        p_profile_data: p.profile_data ?? null,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as { ok: boolean; error?: string };
+      if (!r.ok) throw new Error(r.error ?? "Failed to update profile");
+      return r;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: adminKeys.users() }),
   });

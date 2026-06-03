@@ -234,6 +234,12 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
+# Signup confirmation email uses a 6-digit OTP code ({{ .Token }}) instead of a
+# magic link — the app verifies via supabase.auth.verifyOtp (see AuthPage).
+[auth.email.template.confirmation]
+subject = "Your ExeterTrustCo verification code"
+content_path = "./supabase/templates/confirmation.html"
+
 # Use a production-ready SMTP server
 # [auth.email.smtp]
 # enabled = true

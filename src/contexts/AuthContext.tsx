@@ -14,6 +14,18 @@ import { uploadKycDocuments, type KycDocument } from "@/lib/cloudinary";
 
 export type ApprovalStatus = "pending" | "approved" | "suspended" | "frozen" | "on_hold";
 
+export interface SignupProfileData {
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  kycDocuments?: { type: KycDocument["type"]; file: File }[];
+}
+
 interface Profile {
   id: string;
   full_name: string | null;
@@ -40,18 +52,13 @@ interface AuthContextType {
     name: string,
     email: string,
     password: string,
-    profileData?: {
-      phone?: string | null;
-      dateOfBirth?: string | null;
-      addressLine1?: string | null;
-      addressLine2?: string | null;
-      city?: string | null;
-      state?: string | null;
-      postalCode?: string | null;
-      country?: string | null;
-      kycDocuments?: { type: KycDocument["type"]; file: File }[];
-    }
   ) => Promise<{ error: AuthError | null }>;
+  verifyEmailOtp: (
+    email: string,
+    token: string,
+    profileData?: SignupProfileData,
+  ) => Promise<{ error: AuthError | null }>;
+  resendEmailOtp: (email: string) => Promise<{ error: AuthError | null }>;
   logout: () => Promise<void>;
 }
 
@@ -197,50 +204,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ── Signup ────────────────────────────────────────────────
 
-  const signup = async (
-    name: string,
-    email: string,
-    password: string,
-    profileData?: {
-      phone?: string | null;
-      dateOfBirth?: string | null;
-      addressLine1?: string | null;
-      addressLine2?: string | null;
-      city?: string | null;
-      state?: string | null;
-      postalCode?: string | null;
-      country?: string | null;
-      kycDocuments?: { type: KycDocument["type"]; file: File }[];
-    }
-  ) => {
-    const { data, error } = await supabase.auth.signUp({
+  // Creates the auth user and triggers Supabase's confirmation email.
+  // With `enable_confirmations = true`, no session is returned here — the user
+  // must confirm via the email OTP (`verifyEmailOtp`) before they can sign in.
+  // Profile/KYC persistence is deferred to `verifyEmailOtp`, because the
+  // `profiles` RLS policies require an authenticated session, which only exists
+  // after the OTP is verified.
+  const signup = async (name: string, email: string, password: string) => {
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: name } },
     });
+    return { error };
+  };
 
-    if (!error && data?.user?.id) {
-      const userId = data.user.id;
+  // ── Email OTP verification ────────────────────────────────
 
+  // Verifies the signup email OTP. On success a session is briefly created,
+  // under which we persist the collected profile data + KYC documents (now that
+  // RLS allows it), then sign the user back out so they return to the login
+  // screen to sign in fresh.
+  const verifyEmailOtp = async (
+    email: string,
+    token: string,
+    profileData?: SignupProfileData,
+  ) => {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "signup",
+    });
+
+    if (error) return { error };
+
+    const userId = data?.user?.id;
+    if (userId && profileData) {
       // Upload KYC documents to Cloudinary
       let kycDocs: KycDocument[] = [];
-      if (profileData?.kycDocuments?.length) {
+      if (profileData.kycDocuments?.length) {
         try {
           kycDocs = await uploadKycDocuments(profileData.kycDocuments, userId);
         } catch (uploadError) {
-          return { error: { message: String((uploadError as Error).message) } as AuthError };
+          // Email is already confirmed; don't fail the whole flow over a
+          // Cloudinary hiccup — surface it but keep going.
+          console.error("KYC upload failed:", (uploadError as Error).message);
         }
       }
 
       const newProfileData: Record<string, unknown> = {
-        phone:          profileData?.phone ?? null,
-        date_of_birth:  profileData?.dateOfBirth ?? null,
-        address_line_1: profileData?.addressLine1 ?? null,
-        address_line_2: profileData?.addressLine2 ?? null,
-        city:           profileData?.city ?? null,
-        state:          profileData?.state ?? null,
-        postal_code:    profileData?.postalCode ?? null,
-        country:        profileData?.country ?? null,
+        phone:          profileData.phone ?? null,
+        date_of_birth:  profileData.dateOfBirth ?? null,
+        address_line_1: profileData.addressLine1 ?? null,
+        address_line_2: profileData.addressLine2 ?? null,
+        city:           profileData.city ?? null,
+        state:          profileData.state ?? null,
+        postal_code:    profileData.postalCode ?? null,
+        country:        profileData.country ?? null,
         kyc_documents:  kycDocs,
       };
 
@@ -251,17 +271,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .upsert({
           id:           userId,
           email,
-          full_name:    name,
           profile_data: newProfileData,
         }, { onConflict: "id" });
 
       if (profileError) {
         console.error("Profile creation failed:", profileError.message);
       }
-
-      setLastVerified(Date.now());
     }
 
+    // Return to the login screen — the user signs in fresh after confirming.
+    await supabase.auth.signOut();
+
+    return { error: null };
+  };
+
+  // Resends the signup confirmation OTP (e.g. user abandoned verification or
+  // the code expired).
+  const resendEmailOtp = async (email: string) => {
+    const { error } = await supabase.auth.resend({ type: "signup", email });
     return { error };
   };
 
@@ -278,7 +305,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider value={{
       user, profile, session, loading,
       lastVerified, isLocked, lock, unlock,
-      refreshProfile, login, reauth, signup, logout,
+      refreshProfile, login, reauth, signup, verifyEmailOtp, resendEmailOtp, logout,
     }}>
       {children}
     </AuthContext.Provider>

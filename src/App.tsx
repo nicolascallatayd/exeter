@@ -22,6 +22,7 @@ import CardsPage from "./pages/dashboard/CardsPage.tsx";
 import SavingsPage from "./pages/dashboard/SavingsPage.tsx";
 import InvestmentsPage from "./pages/dashboard/InvestmentsPage.tsx";
 import SettingsPage from "./pages/dashboard/SettingsPage.tsx";
+import ProfilePage from "./pages/dashboard/ProfilePage.tsx";
 import TransferPage from "./pages/dashboard/TransferPage.tsx";
 import CardDepositPage from "./pages/dashboard/CardDepositPage.tsx";
 
@@ -71,6 +72,7 @@ const App = () => (
               <Route path="savings" element={<SavingsPage />} />
               <Route path="investments" element={<InvestmentsPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="transfer" element={<TransferPage />} />
               <Route path="deposit" element={<CardDepositPage />} />
             </Route>

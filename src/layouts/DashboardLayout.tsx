@@ -9,6 +9,7 @@ import ReauthModal from "@/components/ReauthModal";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import PendingApprovalPage from "@/pages/PendingApprovalPage";
 import PhoneVerificationStep from "@/components/PhoneVerificationStep";
+import UserMenu from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 
@@ -122,11 +123,6 @@ const DashboardLayout = () => {
   const status = profile?.approval_status;
   const isSidebarBlocked = status && (SIDEBAR_BLOCKED as string[]).includes(status);
 
-  const displayName =
-    profile?.full_name ||
-    user.email?.split("@")[0] ||
-    "User";
-
   return (
     <SidebarProvider>
       <ReauthModal />
@@ -137,10 +133,7 @@ const DashboardLayout = () => {
           <header className="flex h-14 items-center border-b border-border/30 px-4">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div className="ml-auto flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                Welcome,{" "}
-                <span className="font-medium text-foreground">{displayName}</span>
-              </span>
+              <UserMenu />
             </div>
           </header>
           <main className="flex flex-1 overflow-auto">

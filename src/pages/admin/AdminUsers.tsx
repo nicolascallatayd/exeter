@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Loader2, Users, ArrowUpRight, ArrowDownLeft,
-  Plus, Trash2, Upload, X, CheckCircle2, ExternalLink,
+  Plus, Trash2, Upload, X, CheckCircle2, ExternalLink, Camera,
   ShieldCheck, ShieldAlert, Snowflake, PauseCircle, Clock, Key, MessageSquare,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   useAdminUsers, useAdminUserAccounts, useAdminUserTransactions,
   useAdminAdjustBalance, useAdminCreateUser, useAdminUpdateUser,
-  useAdminDeleteUser, useAdminSetUserStatus, useAdminGenerateTransferOtp,
-  useAdminSetTransferPendingMessage,
+  useAdminUpdateProfile, useAdminDeleteUser, useAdminSetUserStatus,
+  useAdminGenerateTransferOtp, useAdminSetTransferPendingMessage,
   adminKeys, type AdminUser, type AdminUserStatus,
 } from "@/hooks/useAdmin";
-import { uploadKycDocuments, type KycDocument } from "@/lib/cloudinary";
+import { uploadKycDocuments, uploadAvatar, type KycDocument } from "@/lib/cloudinary";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -354,11 +355,16 @@ const UserDetail = ({
   const { data: txns,     isLoading: txnLoading  } = useAdminUserTransactions(user.id);
   const adjust       = useAdminAdjustBalance();
   const updateUser   = useAdminUpdateUser();
+  const updateProfile = useAdminUpdateProfile();
   const deleteUser   = useAdminDeleteUser();
   const setStatus    = useAdminSetUserStatus();
   const generateOtp  = useAdminGenerateTransferOtp();
   const setPendingMsg = useAdminSetTransferPendingMessage();
   const qc           = useQueryClient();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const pd = (user.profile_data ?? {}) as Record<string, unknown>;
+  const pdField = (key: string) => (pd[key] as string | null | undefined) ?? "";
 
   const [selectedAccId, setSelectedAccId] = useState<string | null>(null);
   const [adjAmount,  setAdjAmount]  = useState("");
@@ -367,15 +373,45 @@ const UserDetail = ({
   const [txSearch,   setTxSearch]   = useState("");
   const [fullName,       setFullName]       = useState(user.full_name ?? "");
   const [email,          setEmail]          = useState(user.email);
+  const [profileFields,  setProfileFields]  = useState({
+    phone:          pdField("phone"),
+    date_of_birth:  pdField("date_of_birth"),
+    address_line_1: pdField("address_line_1"),
+    address_line_2: pdField("address_line_2"),
+    city:           pdField("city"),
+    state:          pdField("state"),
+    postal_code:    pdField("postal_code"),
+    country:        pdField("country"),
+  });
+  const [avatarFile,     setAvatarFile]     = useState<File | null>(null);
+  const [avatarPreview,  setAvatarPreview]  = useState<string | null>(null);
+  const [savingProfile,  setSavingProfile]  = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
   const [pendingStatus,  setPendingStatus]  = useState<AdminUserStatus | null>(null);
   const [otpByAccount,   setOtpByAccount]   = useState<Record<string, string>>({});
   const [msgByAccount,   setMsgByAccount]   = useState<Record<string, string>>({});
 
   useEffect(() => {
+    const data = (user.profile_data ?? {}) as Record<string, unknown>;
+    const field = (key: string) => (data[key] as string | null | undefined) ?? "";
     setFullName(user.full_name ?? "");
     setEmail(user.email);
+    setProfileFields({
+      phone:          field("phone"),
+      date_of_birth:  field("date_of_birth"),
+      address_line_1: field("address_line_1"),
+      address_line_2: field("address_line_2"),
+      city:           field("city"),
+      state:          field("state"),
+      postal_code:    field("postal_code"),
+      country:        field("country"),
+    });
+    setAvatarFile(null);
+    setAvatarPreview(null);
   }, [user]);
+
+  const setProfileField = (key: keyof typeof profileFields, value: string) =>
+    setProfileFields((prev) => ({ ...prev, [key]: value }));
 
   const filteredTxns = (txns ?? []).filter((t) =>
     t.name.toLowerCase().includes(txSearch.toLowerCase()) ||
@@ -397,15 +433,48 @@ const UserDetail = ({
     );
   };
 
-  const handleSave = () => {
-    updateUser.mutate(
-      { userId: user.id, email, full_name: fullName || null },
-      {
-        onSuccess: () => toast.success("User details updated."),
-        onError:   (e: Error) => toast.error(e.message),
-      }
-    );
+  const handlePickAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+    setAvatarFile(f);
+    setAvatarPreview(URL.createObjectURL(f));
   };
+
+  const handleSave = async () => {
+    setSavingProfile(true);
+    try {
+      let avatarUrl: string | null = null;
+      if (avatarFile) avatarUrl = await uploadAvatar(avatarFile, user.id);
+
+      // full_name, avatar and profile_data go through the admin profile RPC
+      await updateProfile.mutateAsync({
+        userId:       user.id,
+        full_name:    fullName || null,
+        avatar_url:   avatarUrl,
+        profile_data: { ...profileFields },
+      });
+
+      // Email is auth-level — only touch it (edge function) when it changed.
+      if (email !== user.email) {
+        await updateUser.mutateAsync({ userId: user.id, email, full_name: fullName || null });
+      }
+
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      toast.success("User profile updated.");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const currentAvatar = avatarPreview ?? user.avatar_url ?? undefined;
 
   const handleDelete = () => setConfirmDelete(true);
 
@@ -427,8 +496,22 @@ const UserDetail = ({
           <div className="rounded border border-border/40 bg-gradient-card p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
-                  {(user.full_name ?? user.email).slice(0, 2).toUpperCase()}
+                <div className="relative">
+                  <Avatar className="h-16 w-16 border border-border/50">
+                    {currentAvatar ? <AvatarImage src={currentAvatar} alt={user.full_name ?? user.email} className="object-cover" /> : null}
+                    <AvatarFallback className="bg-primary/10 text-xl font-bold text-primary">
+                      {(user.full_name ?? user.email).slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-foreground shadow transition-colors hover:bg-muted"
+                    aria-label="Change photo"
+                  >
+                    <Camera size={13} />
+                  </button>
+                  <input ref={avatarInputRef} type="file" accept="image/*" className="sr-only" onChange={handlePickAvatar} />
                 </div>
                 <div>
                   <p className="font-display text-lg font-bold text-foreground">{user.full_name ?? "—"}</p>
@@ -438,6 +521,9 @@ const UserDetail = ({
                     <span className="font-medium text-foreground">{formatCurrency(user.total_balance)}</span>
                   </p>
                   <p className="mt-1 font-mono text-xs text-muted-foreground">ID: {user.id}</p>
+                  {avatarFile && (
+                    <p className="mt-1 text-xs text-primary">New photo selected — save to apply.</p>
+                  )}
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:items-end">
@@ -495,23 +581,60 @@ const UserDetail = ({
           </div>
 
           {/* Edit profile */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Full name</Label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          <div className="rounded border border-border/40 bg-gradient-card p-5 space-y-4">
+            <h2 className="font-display text-sm font-semibold text-foreground">Profile Information</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Full name</Label>
+                <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input value={profileFields.phone} onChange={(e) => setProfileField("phone", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Date of birth</Label>
+                <Input type="date" value={profileFields.date_of_birth} onChange={(e) => setProfileField("date_of_birth", e.target.value)} />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">Save changes to update this user's profile.</div>
-            <Button variant="hero" onClick={handleSave}
-              disabled={updateUser.isPending || (fullName === (user.full_name ?? "") && email === user.email)}>
-              {updateUser.isPending ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save changes"}
-            </Button>
+            <div className="space-y-2">
+              <Label>Street address</Label>
+              <Input value={profileFields.address_line_1} onChange={(e) => setProfileField("address_line_1", e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Address line 2</Label>
+              <Input value={profileFields.address_line_2} onChange={(e) => setProfileField("address_line_2", e.target.value)} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input value={profileFields.city} onChange={(e) => setProfileField("city", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>State / Region</Label>
+                <Input value={profileFields.state} onChange={(e) => setProfileField("state", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Postal code</Label>
+                <Input value={profileFields.postal_code} onChange={(e) => setProfileField("postal_code", e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Input value={profileFields.country} onChange={(e) => setProfileField("country", e.target.value)} />
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-muted-foreground">Admin edits apply immediately and don't change the user's approval status.</div>
+              <Button variant="hero" onClick={handleSave} disabled={savingProfile}>
+                {savingProfile ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save changes"}
+              </Button>
+            </div>
           </div>
 
           {/* Accounts + Transactions */}
@@ -863,9 +986,12 @@ const AdminUsers = () => {
                 i !== filtered.length - 1 ? "border-b border-border/20" : ""
               }`}>
               <div className="col-span-2 flex items-center gap-3 min-w-0">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                  {(u.full_name ?? u.email).slice(0, 2).toUpperCase()}
-                </div>
+                <Avatar className="h-8 w-8 shrink-0">
+                  {u.avatar_url ? <AvatarImage src={u.avatar_url} alt={u.full_name ?? u.email} className="object-cover" /> : null}
+                  <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                    {(u.full_name ?? u.email).slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{u.full_name ?? "—"}</p>
                   <p className="text-xs text-muted-foreground truncate">{u.email}</p>

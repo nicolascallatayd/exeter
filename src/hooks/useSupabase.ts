@@ -448,6 +448,32 @@ export const useUpdateProfile = () => {
   });
 };
 
+// Submits a user-initiated profile edit. The RPC writes the changes and flips
+// approval_status back to 'pending' — an admin must re-approve before the
+// account regains full dashboard access.
+export const useSubmitProfileUpdate = () => {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (updates: {
+      full_name: string;
+      avatar_url?: string | null;
+      profile_data: Record<string, unknown>;
+    }) => {
+      const { data, error } = await supabase.rpc("submit_profile_update", {
+        p_full_name:    updates.full_name,
+        p_profile_data: updates.profile_data,
+        p_avatar_url:   updates.avatar_url ?? null,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as { ok: boolean; error?: string };
+      if (!r.ok) throw new Error(r.error ?? "Failed to submit profile update");
+      return r;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.profile(user?.id ?? "") }),
+  });
+};
+
 export const useUpdatePassword = () => {
   return useMutation({
     mutationFn: async (newPassword: string) => {

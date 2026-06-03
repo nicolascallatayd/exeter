@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, REAUTH_GRACE_MS } from "@/contexts/AuthContext";
+import { useAuth, REAUTH_GRACE_MS, type SignupProfileData } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,16 +56,25 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
   // Step 3
   const [docs, setDocs] = useState<DocSlot[]>(INITIAL_DOCS);
 
+  // Email OTP verification
+  const [awaitingOtp,    setAwaitingOtp]    = useState(false);
+  const [otp,            setOtp]            = useState("");
+  const [pendingProfile, setPendingProfile] = useState<SignupProfileData | null>(null);
+  // Suppresses the auto-redirect effect during the brief verify session that
+  // `verifyEmailOtp` opens (and immediately closes) to persist profile data.
+  const verifyingRef = useRef(false);
+
   const [errorMsg,   setErrorMsg]   = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const { user, loading, lastVerified, lock, login, signup } = useAuth();
+  const { user, loading, lastVerified, lock, login, signup, verifyEmailOtp, resendEmailOtp } = useAuth();
   const navigate = useNavigate();
   const { data: isAdmin, isLoading: checkingAdmin } = useIsAdmin();
 
   useEffect(() => {
     if (loading || checkingAdmin) return;
+    if (verifyingRef.current) return;
     if (!user) return;
     const destination = isAdmin ? "/admin" : "/dashboard";
     navigate(destination, { replace: true });
@@ -139,12 +148,19 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
     if (error) {
       if (error.message.toLowerCase().includes("invalid login")) {
         setErrorMsg("Incorrect email or password.");
+        setSubmitting(false);
       } else if (error.message.toLowerCase().includes("email not confirmed")) {
-        setErrorMsg("Please confirm your email before signing in.");
+        // Move the user into OTP verification and send them a fresh code.
+        await resendEmailOtp(email);
+        setPendingProfile(null);
+        setOtp("");
+        setAwaitingOtp(true);
+        setSuccessMsg(`Your email isn't confirmed yet. We sent a 6-digit code to ${email}.`);
+        setSubmitting(false);
       } else {
         setErrorMsg(error.message);
+        setSubmitting(false);
       }
-      setSubmitting(false);
     } else {
       navigate("/dashboard");
     }
@@ -155,11 +171,25 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
     if (!validateStep3()) return;
     setSubmitting(true);
 
+    const { error } = await signup(name, email, password);
+
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered")) {
+        setErrorMsg("An account with this email already exists.");
+      } else {
+        setErrorMsg(error.message);
+      }
+      setSubmitting(false);
+      return;
+    }
+
+    // Stash the collected profile/KYC data; it's persisted once the email OTP
+    // is verified (a session is required for the profiles RLS policy).
     const kycDocuments = docs
       .filter((d) => d.file !== null)
       .map((d) => ({ type: d.type, file: d.file! }));
 
-    const { error } = await signup(name, email, password, {
+    setPendingProfile({
       phone:        phone || null,
       dateOfBirth:  dateOfBirth || null,
       addressLine1: addressLine1 || null,
@@ -170,23 +200,68 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
       country:      country || null,
       kycDocuments,
     });
+    setOtp("");
+    setAwaitingOtp(true);
+    setSuccessMsg(`We sent a 6-digit code to ${email}. Enter it below to confirm your email.`);
+    setSubmitting(false);
+  };
+
+  const handleVerifyOtp = async () => {
+    clearError();
+    if (otp.length !== 6) {
+      setErrorMsg("Enter the full 6-digit code.");
+      return;
+    }
+    setSubmitting(true);
+
+    verifyingRef.current = true;
+    const { error } = await verifyEmailOtp(email, otp, pendingProfile ?? undefined);
+    verifyingRef.current = false;
 
     if (error) {
-      if (error.message.toLowerCase().includes("already registered")) {
-        setErrorMsg("An account with this email already exists.");
-      } else {
-        setErrorMsg(error.message);
-      }
-      setSubmitting(false);
-    } else {
-      setSuccessMsg(
-        "Account created! Check your inbox for a confirmation link, then sign in. Your account will be reviewed before you can access your dashboard."
+      setErrorMsg(
+        error.message.toLowerCase().includes("expired") ||
+        error.message.toLowerCase().includes("invalid")
+          ? "Invalid or expired code. Request a new one and try again."
+          : error.message
       );
       setSubmitting(false);
-      setMode("login");
-      setStep(1);
-      setPassword("");
+      return;
     }
+
+    // Email confirmed — return to the sign-in screen.
+    setAwaitingOtp(false);
+    setPendingProfile(null);
+    setOtp("");
+    setMode("login");
+    setStep(1);
+    setPassword("");
+    setSubmitting(false);
+    setSuccessMsg(
+      "Email confirmed! Your account will be reviewed before you can access your dashboard. Please sign in."
+    );
+  };
+
+  const handleResendOtp = async () => {
+    clearError();
+    setSubmitting(true);
+    const { error } = await resendEmailOtp(email);
+    setSubmitting(false);
+    if (error) {
+      setErrorMsg(error.message);
+    } else {
+      setSuccessMsg(`A new code has been sent to ${email}.`);
+    }
+  };
+
+  const cancelVerification = () => {
+    setAwaitingOtp(false);
+    setPendingProfile(null);
+    setOtp("");
+    clearError();
+    setSuccessMsg(null);
+    setMode("login");
+    setStep(1);
   };
 
   // ── Switch mode ───────────────────────────────────────────
@@ -196,6 +271,7 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
     clearError();
     setSuccessMsg(null);
     setStep(1);
+    setAwaitingOtp(false); setOtp(""); setPendingProfile(null);
     setName(""); setEmail(""); setPassword("");
     setPhone(""); setDateOfBirth(""); setAddressLine1(""); setAddressLine2("");
     setCity(""); setStateVal(""); setPostalCode(""); setCountry("");
@@ -221,17 +297,19 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
         <div className="rounded border border-border/50 bg-gradient-card p-8 shadow-card">
           <div className="mb-6 text-center">
             <h1 className="font-display text-2xl font-bold text-foreground">
-              {mode === "login" ? "Welcome back" : "Create your account"}
+              {awaitingOtp ? "Confirm your email" : mode === "login" ? "Welcome back" : "Create your account"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {mode === "login"
+              {awaitingOtp
+                ? `Enter the 6-digit code we sent to ${email}`
+                : mode === "login"
                 ? "Sign in to access your accounts"
                 : "Start your financial journey with ExeterTrustCo"}
             </p>
           </div>
 
           {/* Step indicator — signup only */}
-          {mode === "signup" && (
+          {mode === "signup" && !awaitingOtp && (
             <div className="mb-6 flex items-center justify-between">
               {STEPS.map((s, i) => {
                 const n = i + 1;
@@ -274,8 +352,44 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
             </div>
           )}
 
+          {/* ── Email OTP verification ── */}
+          {awaitingOtp && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="otp">Verification code</Label>
+                <Input
+                  id="otp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  maxLength={6}
+                  className="border-border/50 bg-muted/50 font-mono text-center text-lg tracking-[0.4em]"
+                  disabled={submitting}
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                />
+              </div>
+              <Button type="button" variant="hero" className="w-full" size="lg"
+                onClick={handleVerifyOtp} disabled={submitting || otp.length !== 6}>
+                {submitting
+                  ? <><Loader2 size={16} className="animate-spin" /> Confirming…</>
+                  : <><CheckCircle2 size={16} className="mr-2" /> Confirm email</>}
+              </Button>
+              <button type="button" onClick={handleResendOtp} disabled={submitting}
+                className="w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50">
+                Didn't receive it? Resend code.
+              </button>
+              <button type="button" onClick={cancelVerification} disabled={submitting}
+                className="flex w-full items-center justify-center gap-1 text-center text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50">
+                <ArrowLeft size={12} /> Use a different email
+              </button>
+            </div>
+          )}
+
           {/* ── Login form ── */}
-          {mode === "login" && (
+          {!awaitingOtp && mode === "login" && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -296,7 +410,7 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
           )}
 
           {/* ── Signup multi-step ── */}
-          {mode === "signup" && (
+          {!awaitingOtp && mode === "signup" && (
             <AnimatePresence mode="wait">
               {/* Step 1 — Credentials */}
               {step === 1 && (
@@ -433,13 +547,15 @@ const AuthPage = ({ initialMode = "login" }: AuthPageProps) => {
             </AnimatePresence>
           )}
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-            <button onClick={switchMode} disabled={submitting}
-              className="font-medium text-primary hover:underline disabled:opacity-50">
-              {mode === "login" ? "Sign up" : "Sign in"}
-            </button>
-          </p>
+          {!awaitingOtp && (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
+              <button onClick={switchMode} disabled={submitting}
+                className="font-medium text-primary hover:underline disabled:opacity-50">
+                {mode === "login" ? "Sign up" : "Sign in"}
+              </button>
+            </p>
+          )}
         </div>
       </motion.div>
     </div>
