@@ -319,6 +319,21 @@ export const useSendExternalTransfer = () => {
   });
 };
 
+// Request a transfer OTP to be emailed to the signed-in user. The 6-digit code
+// is generated server-side by the send-transfer-otp Edge Function and is never
+// returned to the client — it only reaches the user by email.
+export const useSendTransferOtp = () =>
+  useMutation({
+    mutationFn: async (accountId: string) => {
+      const { data, error } = await supabase.functions.invoke("send-transfer-otp", {
+        body: { accountId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data as { ok: boolean };
+    },
+  });
+
 export const useExternalTransfers = () => {
   const { user } = useAuth();
   return useQuery({

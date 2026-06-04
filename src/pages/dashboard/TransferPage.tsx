@@ -12,6 +12,7 @@ import {
   useAccounts, useTransfer, useRealtimeAccounts,
   useBeneficiaries, useAddBeneficiary, useDeleteBeneficiary,
   useSendExternalTransfer, useDeposit, useCustomMessages,
+  useSendTransferOtp,
 } from "@/hooks/useSupabase";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
@@ -136,6 +137,7 @@ const TransferPage = () => {
   const addBeneficiary    = useAddBeneficiary();
   const deleteBeneficiary = useDeleteBeneficiary();
   const customMessages    = useCustomMessages();
+  const sendOtp           = useSendTransferOtp();
 
   // ── Shared state ───────────────────────────────────────────
   const [mode, setMode]           = useState<TransferMode | null>(null);
@@ -194,6 +196,16 @@ const TransferPage = () => {
   };
 
   // ── Handlers ───────────────────────────────────────────────
+
+  // Email a fresh 6-digit OTP for the given source account. Called when the
+  // user reaches the confirm step (auto-send) and when they tap "Resend code".
+  const requestTransferOtp = (accountId: string) => {
+    setOtpCode("");
+    sendOtp.mutate(accountId, {
+      onSuccess: () => toast.success("A 6-digit code has been sent to your email."),
+      onError:   (e: Error) => toast.error(e.message),
+    });
+  };
 
   const handleOwnConfirm = () => {
     if (!fromId || !toId || parsedAmount <= 0) return;
@@ -535,7 +547,7 @@ const TransferPage = () => {
               </div>
               <Button variant="hero" className="w-full" size="lg"
                 disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance}
-                onClick={() => setOwnStep("confirm")}>
+                onClick={() => { setOwnStep("confirm"); requestTransferOtp(fromAccount.id); }}>
                 Review <ArrowRight size={18} />
               </Button>
             </motion.div>
@@ -567,18 +579,28 @@ const TransferPage = () => {
                 <div className="space-y-2 rounded border border-border/40 bg-muted/30 p-4">
                   <div className="flex items-center gap-2">
                     <KeyRound size={14} className="text-muted-foreground" />
-                    <p className="text-xs font-medium text-foreground">Transfer OTP required</p>
+                    <p className="text-xs font-medium text-foreground">Email verification code</p>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Contact your account manager to obtain a one-time code before proceeding.
+                    {sendOtp.isPending
+                      ? "Sending a 6-digit code to your email…"
+                      : "We've emailed a 6-digit code to your registered email. Enter it below to authorize this transfer."}
                   </p>
                   <Input
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value)}
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="Enter 6-digit code"
                     maxLength={6}
                     className="border-border/50 bg-background font-mono tracking-widest text-foreground"
                   />
+                  <button
+                    type="button"
+                    onClick={() => fromAccount && requestTransferOtp(fromAccount.id)}
+                    disabled={sendOtp.isPending}
+                    className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                  >
+                    {sendOtp.isPending ? "Sending…" : "Resend code"}
+                  </button>
                 </div>
                 <Button variant="hero" className="w-full" size="lg" onClick={handleOwnConfirm} disabled={transferOwn.isPending || !otpCode.trim()}>
                   {transferOwn.isPending ? <><Loader2 size={16} className="animate-spin" /> Processing…</> : `Send ${fmtAmount}`}
@@ -783,7 +805,7 @@ const TransferPage = () => {
                 </div>
                 <Button variant="hero" className="w-full" size="lg"
                   disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance}
-                  onClick={() => setExtStep("confirm")}>
+                  onClick={() => { setExtStep("confirm"); requestTransferOtp(fromAccount.id); }}>
                   Review Transfer <ArrowRight size={18} />
                 </Button>
               </>
