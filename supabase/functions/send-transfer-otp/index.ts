@@ -59,9 +59,11 @@ serve(async (req) => {
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("SUPPORT_FROM_EMAIL");
+    // Prefer a dedicated OTP sender (e.g. on a verified notifications subdomain);
+    // fall back to the shared support address.
+    const fromEmail = Deno.env.get("OTP_FROM_EMAIL") ?? Deno.env.get("SUPPORT_FROM_EMAIL");
     if (!resendApiKey || !fromEmail) {
-      return new Response(JSON.stringify({ error: "Missing RESEND_API_KEY or SUPPORT_FROM_EMAIL" }), {
+      return new Response(JSON.stringify({ error: "Missing RESEND_API_KEY or OTP_FROM_EMAIL/SUPPORT_FROM_EMAIL" }), {
         status: 500,
         headers: corsHeaders,
       });

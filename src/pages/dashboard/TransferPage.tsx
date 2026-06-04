@@ -847,7 +847,7 @@ const TransferPage = () => {
                   <p className="text-xs font-medium text-foreground">Transfer OTP required</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Contact your account manager to obtain a one-time code before proceeding.
+                  An OTP has been sent to your registered email address. Enter the OTP below.
                 </p>
                 <Input
                   value={otpCode}
