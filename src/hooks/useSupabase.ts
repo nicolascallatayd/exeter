@@ -10,6 +10,27 @@ import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Helper function to send transaction alert email
+const sendTransactionAlert = async (userId: string, transactionId: string) => {
+  try {
+    const { data, error } = await supabase.rpc("get_transaction_for_notification", {
+      p_transaction_id: transactionId,
+    });
+    if (error || !data?.ok) return;
+    
+    const transactionData = data as { user_id: string; user_email: string; user_name: string; transaction: any };
+    
+    await supabase.functions.invoke("send-transaction-alert", {
+      body: {
+        userId: transactionData.user_id,
+        transaction: transactionData.transaction,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to send transaction alert:", err);
+  }
+};
+
 // ─── Query Keys ───────────────────────────────────────────────
 
 export const keys = {
@@ -143,9 +164,17 @@ export const useTransfer = () => {
       if (!result.ok) throw new Error(result.error ?? "Transfer failed.");
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
       qc.invalidateQueries({ queryKey: keys.accounts(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.transactions(user?.id ?? "") });
+      
+      // Send email notifications for debit and credit transactions
+      if (result.debit_id) {
+        await sendTransactionAlert(user!.id, result.debit_id);
+      }
+      if (result.credit_id) {
+        await sendTransactionAlert(user!.id, result.credit_id);
+      }
     },
   });
 };
@@ -189,9 +218,21 @@ export const useDeposit = () => {
       if (!result.ok) throw new Error(result.error ?? "Deposit failed.");
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       qc.invalidateQueries({ queryKey: keys.accounts(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.transactions(user?.id ?? "") });
+      
+      // Get the most recent transaction for this user and send alert
+      const { data: transactions } = await supabase
+        .from("transactions")
+        .select("id")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      
+      if (transactions && transactions.length > 0) {
+        await sendTransactionAlert(user!.id, transactions[0].id);
+      }
     },
   });
 };
@@ -310,11 +351,16 @@ export const useSendExternalTransfer = () => {
       if (!result.ok) throw new Error(result.error ?? "Transfer failed.");
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
       qc.invalidateQueries({ queryKey: keys.accounts(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.transactions(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.beneficiaries(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.externalTransfers(user?.id ?? "") });
+      
+      // Send email notification for the transaction if tx_id is available
+      if (result.tx_id) {
+        await sendTransactionAlert(user!.id, result.tx_id);
+      }
     },
   });
 };
