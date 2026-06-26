@@ -27,7 +27,7 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { userId, transaction, accountLast4 } = await req.json();
+    const { userId, transaction, accountLast4, beneficiaryAccountLast4 } = await req.json();
     
     if (!userId || !transaction) {
       return new Response(JSON.stringify({ error: "userId and transaction are required" }), {
@@ -87,10 +87,12 @@ serve(async (req) => {
       "",
       `Transaction Details:`,
       `-------------------`,
+      `Transaction ID: ${transaction.id}`,
       `Type: ${transactionType}`,
       `Amount: ${amountPrefix}${formattedAmount}`,
       `Account: ****${accountLast4 || "----"}`,
-      `Description: ${transaction.name}`,
+      `Beneficiary: ${transaction.name}`,
+      beneficiaryAccountLast4 ? `Beneficiary Account: ****${beneficiaryAccountLast4}` : "",
       `Category: ${transaction.category}`,
       `Date: ${transactionDate}`,
       transaction.note ? `Narration: ${transaction.note}` : "",

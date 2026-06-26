@@ -23,7 +23,7 @@ const sendTransactionAlert = async (userId: string, transactionId: string) => {
       return;
     }
     
-    const transactionData = data as { user_id: string; user_email: string; user_name: string; account_last4: string; transaction: any };
+    const transactionData = data as { user_id: string; user_email: string; user_name: string; account_last4: string; beneficiary_account_last4: string; transaction: any };
     console.log("Sending email alert for transaction:", transactionData.transaction);
     
     await supabase.functions.invoke("send-transaction-alert", {
@@ -31,6 +31,7 @@ const sendTransactionAlert = async (userId: string, transactionId: string) => {
         userId: transactionData.user_id,
         transaction: transactionData.transaction,
         accountLast4: transactionData.account_last4,
+        beneficiaryAccountLast4: transactionData.beneficiary_account_last4,
       },
     });
     console.log("Email alert sent successfully");
