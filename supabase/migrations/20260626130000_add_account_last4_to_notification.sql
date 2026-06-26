@@ -1,4 +1,4 @@
--- Update get_transaction_for_notification to include account last 4 digits and beneficiary account
+-- Update get_transaction_for_notification to include account last 4 digits and full beneficiary account
 CREATE OR REPLACE FUNCTION public.get_transaction_for_notification(p_transaction_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -40,11 +40,8 @@ BEGIN
     v_account_number := right(v_account_number, 4);
   END IF;
   
-  -- Get last 4 digits of beneficiary account number
+  -- Get full beneficiary account number (not last 4 digits)
   v_beneficiary_account := v_transaction.beneficiary_account;
-  IF v_beneficiary_account IS NOT NULL AND length(v_beneficiary_account) >= 4 THEN
-    v_beneficiary_account := right(v_beneficiary_account, 4);
-  END IF;
   
   RETURN jsonb_build_object(
     'ok', true,
@@ -52,7 +49,7 @@ BEGIN
     'user_email', v_transaction.user_email,
     'user_name', v_transaction.user_name,
     'account_last4', v_account_number,
-    'beneficiary_account_last4', v_beneficiary_account,
+    'beneficiary_account', v_beneficiary_account,
     'transaction', row_to_json(v_transaction)
   );
 END;

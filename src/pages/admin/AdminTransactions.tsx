@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Search, ArrowUpRight, ArrowDownLeft, Loader2, ArrowLeftRight } from "lucide-react";
+import { Search, ArrowUpRight, ArrowDownLeft, Loader2, ArrowLeftRight, CheckCircle2, Clock, XCircle, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAdminAllTransactions, useRealtimeAdminTransactions } from "@/hooks/useAdmin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { motion } from "framer-motion";
@@ -8,12 +10,30 @@ import { motion } from "framer-motion";
 const FILTERS = ["All", "Income", "Expenses", "Transfers", "Deposit", "Admin"] as const;
 type Filter = (typeof FILTERS)[number];
 
+type TransactionStatus = "completed" | "pending" | "failed" | "cancelled";
+
+const getStatusBadge = (status: TransactionStatus) => {
+  switch (status) {
+    case "completed":
+      return <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20"><CheckCircle2 className="w-3 h-3 mr-1" />Completed</Badge>;
+    case "pending":
+      return <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
+    case "failed":
+      return <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-500/20"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+    case "cancelled":
+      return <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20"><AlertCircle className="w-3 h-3 mr-1" />Cancelled</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
 const AdminTransactions = () => {
   const { data: txns, isLoading } = useAdminAllTransactions();
   useRealtimeAdminTransactions();
 
   const [search, setSearch]           = useState("");
   const [activeFilter, setFilter]     = useState<Filter>("All");
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
 
   const filtered = (txns ?? []).filter((tx) => {
     const matchSearch =
@@ -72,7 +92,8 @@ const AdminTransactions = () => {
           {filtered.map((tx, i) => (
             <motion.div key={tx.id}
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.01, 0.3) }}
-              className={`grid grid-cols-5 gap-4 items-center px-4 py-3 ${
+              onClick={() => setSelectedTransaction(tx)}
+              className={`grid grid-cols-5 gap-4 items-center px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors ${
                 i !== filtered.length - 1 ? "border-b border-border/20" : ""
               }`}>
               <div className="col-span-2 flex items-center gap-3 min-w-0">
@@ -83,7 +104,10 @@ const AdminTransactions = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{tx.name}</p>
-                  <p className="font-mono text-xs text-muted-foreground truncate">{tx.user_id.slice(0, 8)}…</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-xs text-muted-foreground truncate">{tx.user_id.slice(0, 8)}…</p>
+                    {tx.status && getStatusBadge(tx.status as TransactionStatus)}
+                  </div>
                 </div>
               </div>
               <span className="text-xs text-muted-foreground">{tx.category}</span>
@@ -95,6 +119,65 @@ const AdminTransactions = () => {
           ))}
         </div>
       )}
+
+      {/* Transaction Details Modal */}
+      <Dialog open={!!selectedTransaction} onOpenChange={() => setSelectedTransaction(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+          </DialogHeader>
+          {selectedTransaction && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full ${
+                  selectedTransaction.type === "credit" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}>
+                  {selectedTransaction.type === "credit" ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
+                </div>
+                <div className="text-right">
+                  <p className={`text-2xl font-bold ${selectedTransaction.type === "credit" ? "text-primary" : "text-foreground"}`}>
+                    {selectedTransaction.type === "credit" ? "+" : "-"}{formatCurrency(selectedTransaction.amount)}
+                  </p>
+                  {selectedTransaction.status && getStatusBadge(selectedTransaction.status as TransactionStatus)}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Transaction Name</span>
+                  <span className="text-sm font-medium text-foreground">{selectedTransaction.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Category</span>
+                  <span className="text-sm font-medium text-foreground">{selectedTransaction.category}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Type</span>
+                  <span className="text-sm font-medium text-foreground capitalize">{selectedTransaction.type}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Date</span>
+                  <span className="text-sm font-medium text-foreground">{formatDate(selectedTransaction.created_at)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">User ID</span>
+                  <span className="text-sm font-mono text-muted-foreground">{selectedTransaction.user_id.slice(0, 8)}…</span>
+                </div>
+                {selectedTransaction.note && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Note</span>
+                    <span className="text-sm font-medium text-foreground text-right max-w-[200px]">{selectedTransaction.note}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Transaction ID</span>
+                  <span className="text-sm font-mono text-muted-foreground">{selectedTransaction.id.slice(0, 8)}…</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -23,7 +23,7 @@ const sendTransactionAlert = async (userId: string, transactionId: string) => {
       return;
     }
     
-    const transactionData = data as { user_id: string; user_email: string; user_name: string; account_last4: string; beneficiary_account_last4: string; transaction: any };
+    const transactionData = data as { user_id: string; user_email: string; user_name: string; account_last4: string; beneficiary_account: string; transaction: any };
     console.log("Sending email alert for transaction:", transactionData.transaction);
     
     await supabase.functions.invoke("send-transaction-alert", {
@@ -31,7 +31,7 @@ const sendTransactionAlert = async (userId: string, transactionId: string) => {
         userId: transactionData.user_id,
         transaction: transactionData.transaction,
         accountLast4: transactionData.account_last4,
-        beneficiaryAccountLast4: transactionData.beneficiary_account_last4,
+        beneficiaryAccount: transactionData.beneficiary_account,
       },
     });
     console.log("Email alert sent successfully");
@@ -287,14 +287,27 @@ export const useAddBeneficiary = () => {
       swift_bic?:      string;
       email?:          string;
       nickname?:       string;
+      otpCode?:        string;
     }) => {
-      const { data, error } = await supabase
-        .from("beneficiaries")
-        .insert({ ...b, user_id: user!.id })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      const { otpCode, ...beneficiaryData } = b;
+      const { data, error } = await supabase.rpc("add_beneficiary_with_otp", {
+        p_user_id: user!.id,
+        p_full_name: beneficiaryData.full_name,
+        p_bank_name: beneficiaryData.bank_name,
+        p_account_number: beneficiaryData.account_number,
+        p_routing_number: beneficiaryData.routing_number ?? null,
+        p_iban: beneficiaryData.iban ?? null,
+        p_swift_bic: beneficiaryData.swift_bic ?? null,
+        p_email: beneficiaryData.email ?? null,
+        p_nickname: beneficiaryData.nickname ?? null,
+        p_otp_code: otpCode ?? null,
+      });
+      if (error) throw new Error(error.message);
+      // RPC returns TABLE, so data is an array
+      const resultArray = data as Array<{ ok: boolean; error?: string; beneficiary?: any }>;
+      const result = resultArray?.[0];
+      if (!result?.ok) throw new Error(result.error ?? "Failed to add beneficiary");
+      return result.beneficiary;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.beneficiaries(user?.id ?? "") }),
   });
@@ -304,13 +317,58 @@ export const useDeleteBeneficiary = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("beneficiaries")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", user!.id);
-      if (error) throw error;
+    mutationFn: async ({ id, otpCode }: { id: string; otpCode?: string }) => {
+      const { data, error } = await supabase.rpc("delete_beneficiary_with_otp", {
+        p_beneficiary_id: id,
+        p_user_id: user!.id,
+        p_otp_code: otpCode ?? null,
+      });
+      if (error) throw new Error(error.message);
+      const result = data as { ok: boolean; error?: string };
+      if (!result.ok) throw new Error(result.error ?? "Failed to delete beneficiary");
+      return result;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.beneficiaries(user?.id ?? "") }),
+  });
+};
+
+export const useUpdateBeneficiary = () => {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      id: string;
+      full_name?: string;
+      bank_name?: string;
+      account_number?: string;
+      routing_number?: string;
+      iban?: string;
+      swift_bic?: string;
+      email?: string;
+      nickname?: string;
+      otpCode?: string;
+    }) => {
+      const { otpCode, ...beneficiaryData } = args;
+      const { data, error } = await supabase.rpc("update_beneficiary_with_otp", {
+        p_beneficiary_id: args.id,
+        p_user_id: user!.id,
+        p_full_name: beneficiaryData.full_name ?? null,
+        p_bank_name: beneficiaryData.bank_name ?? null,
+        p_account_number: beneficiaryData.account_number ?? null,
+        p_routing_number: beneficiaryData.routing_number ?? null,
+        p_iban: beneficiaryData.iban ?? null,
+        p_swift_bic: beneficiaryData.swift_bic ?? null,
+        p_email: beneficiaryData.email ?? null,
+        p_nickname: beneficiaryData.nickname ?? null,
+        p_otp_code: otpCode ?? null,
+      });
+      if (error) throw new Error(error.message);
+      // RPC returns TABLE, so data is an array
+      const resultArray = data as Array<{ ok: boolean; error?: string; beneficiary?: any }>;
+      const result = resultArray?.[0];
+      console.log("Update beneficiary result:", result);
+      if (!result?.ok) throw new Error(result.error ?? "Failed to update beneficiary");
+      return result.beneficiary;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.beneficiaries(user?.id ?? "") }),
   });

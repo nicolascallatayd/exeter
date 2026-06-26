@@ -25,6 +25,7 @@ import SettingsPage from "./pages/dashboard/SettingsPage.tsx";
 import ProfilePage from "./pages/dashboard/ProfilePage.tsx";
 import TransferPage from "./pages/dashboard/TransferPage.tsx";
 import CardDepositPage from "./pages/dashboard/CardDepositPage.tsx";
+import BeneficiariesPage from "./pages/dashboard/BeneficiariesPage.tsx";
 
 // Admin dashboard
 import AdminLayout from "./layouts/AdminLayout.tsx";
@@ -75,6 +76,7 @@ const App = () => (
               <Route path="profile" element={<ProfilePage />} />
               <Route path="transfer" element={<TransferPage />} />
               <Route path="deposit" element={<CardDepositPage />} />
+              <Route path="beneficiaries" element={<BeneficiariesPage />} />
             </Route>
 
             {/* Admin dashboard — completely separate layout */}
