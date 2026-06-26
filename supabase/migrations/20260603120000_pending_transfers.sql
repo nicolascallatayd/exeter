@@ -50,7 +50,7 @@ CREATE POLICY "Admins read pending transfers" ON public.pending_transfers
   AS PERMISSIVE FOR SELECT TO authenticated
   USING (public.is_admin());
 
--- ── transfer_funds: queue instead of moving money ────────────────────────────
+-- ── transfer_funds: immediate execution for between accounts ───────────────────
 CREATE OR REPLACE FUNCTION public.transfer_funds(p_user_id uuid, p_from_id uuid, p_to_id uuid, p_amount numeric, p_note text DEFAULT NULL::text, p_otp_code text DEFAULT NULL::text)
  RETURNS json
  LANGUAGE plpgsql
@@ -61,6 +61,8 @@ DECLARE
   to_account   RECORD;
   error_message TEXT;
   ref_code TEXT;
+  debit_id UUID;
+  credit_id UUID;
 BEGIN
   IF auth.uid() IS NULL OR auth.uid()::UUID IS DISTINCT FROM p_user_id THEN
     RETURN json_build_object('ok', FALSE, 'error', 'Unauthorized');
@@ -133,28 +135,34 @@ BEGIN
     RETURN json_build_object('ok', FALSE, 'error', 'Insufficient balance.');
   END IF;
 
-  -- Queue for admin review — funds are NOT moved yet.
+  -- Execute transfer immediately for between accounts
   ref_code := 'TXN-' || upper(substr(gen_random_uuid()::text, 1, 8));
 
-  INSERT INTO public.pending_transfers (
-    user_id, from_account_id, to_account_id, transfer_type, amount, note, reference, status
-  ) VALUES (
-    p_user_id, p_from_id, p_to_id, 'own', p_amount, p_note, ref_code, 'pending'
-  );
+  UPDATE public.accounts SET balance = balance - p_amount WHERE id = p_from_id;
+  UPDATE public.accounts SET balance = balance + p_amount WHERE id = p_to_id;
+
+  INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
+  VALUES (p_user_id, p_from_id, 'Transfer', 'Transfer', p_amount, 'debit', p_note, now())
+  RETURNING id INTO debit_id;
+
+  INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
+  VALUES (p_user_id, p_to_id, 'Transfer', 'Transfer', p_amount, 'credit', p_note, now())
+  RETURNING id INTO credit_id;
 
   RETURN json_build_object(
     'ok',        TRUE,
-    'pending',   TRUE,
+    'pending',   FALSE,
     'reference', ref_code,
     'from_name', from_account.name,
     'to_name',   to_account.name,
     'amount',    p_amount,
-    'message',   from_account.transfer_pending_message
+    'debit_id',  debit-id,
+    'credit_id', credit_id
   );
 END;
 $function$;
 
--- ── send_external_transfer: queue instead of moving money ────────────────────
+-- ── send_external_transfer: debit immediately, queue for approval ───────────
 CREATE OR REPLACE FUNCTION public.send_external_transfer(p_user_id uuid, p_account_id uuid, p_beneficiary_id uuid DEFAULT NULL::uuid, p_beneficiary_name text DEFAULT NULL::text, p_bank_name text DEFAULT NULL::text, p_account_number text DEFAULT NULL::text, p_amount numeric DEFAULT 0, p_note text DEFAULT NULL::text, p_save_beneficiary boolean DEFAULT false, p_swift_bic text DEFAULT NULL::text, p_iban text DEFAULT NULL::text, p_otp_code text DEFAULT NULL::text)
  RETURNS json
  LANGUAGE plpgsql
@@ -164,6 +172,7 @@ DECLARE
   src_account  RECORD;
   bene_id      UUID;
   ref_code     TEXT;
+  debit_id     UUID;
   error_message TEXT;
 BEGIN
   IF auth.uid() IS NULL OR auth.uid()::UUID IS DISTINCT FROM p_user_id THEN
@@ -238,8 +247,14 @@ BEGIN
     bene_id := p_beneficiary_id;
   END IF;
 
-  -- Queue for admin review — funds are NOT moved yet.
+  -- Debit immediately, but queue for admin review before external release
   ref_code := 'EXT-' || upper(substr(gen_random_uuid()::text, 1, 8));
+
+  UPDATE public.accounts SET balance = balance - p_amount WHERE id = p_account_id;
+
+  INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
+  VALUES (p_user_id, p_account_id, COALESCE(p_beneficiary_name, 'External Transfer'), 'Transfer', p_amount, 'debit', p_note, now())
+  RETURNING id INTO debit_id;
 
   INSERT INTO public.pending_transfers (
     user_id, from_account_id, transfer_type, amount, note, reference,
@@ -255,6 +270,7 @@ BEGIN
     'reference',      ref_code,
     'beneficiary_id', bene_id,
     'amount',         p_amount,
+    'tx_id',          debit_id,
     'message',        src_account.transfer_pending_message
   );
 END;
@@ -333,7 +349,7 @@ BEGIN
 END;
 $function$;
 
--- ── Admin: approve a pending transfer (moves the money) ──────────────────────
+-- ── Admin: approve a pending transfer (external only, already debited) ─────────
 CREATE OR REPLACE FUNCTION public.admin_approve_transfer(p_id uuid)
  RETURNS json
  LANGUAGE plpgsql
@@ -341,8 +357,6 @@ CREATE OR REPLACE FUNCTION public.admin_approve_transfer(p_id uuid)
 AS $function$
 DECLARE
   pt  RECORD;
-  src RECORD;
-  dst RECORD;
 BEGIN
   IF NOT public.is_admin() THEN
     RETURN json_build_object('ok', FALSE, 'error', 'Admin access required');
@@ -356,33 +370,14 @@ BEGIN
     RETURN json_build_object('ok', FALSE, 'error', 'Transfer already ' || pt.status || '.');
   END IF;
 
-  SELECT * INTO src FROM public.accounts WHERE id = pt.from_account_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RETURN json_build_object('ok', FALSE, 'error', 'Source account no longer exists.');
-  END IF;
-  IF src.balance < pt.amount THEN
-    RETURN json_build_object('ok', FALSE, 'error', 'Insufficient balance to approve this transfer.');
-  END IF;
-
-  IF pt.transfer_type = 'own' THEN
-    SELECT * INTO dst FROM public.accounts WHERE id = pt.to_account_id FOR UPDATE;
-    IF NOT FOUND THEN
-      RETURN json_build_object('ok', FALSE, 'error', 'Destination account no longer exists.');
-    END IF;
-
-    UPDATE public.accounts SET balance = balance - pt.amount WHERE id = pt.from_account_id;
-    UPDATE public.accounts SET balance = balance + pt.amount WHERE id = pt.to_account_id;
-
-    INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
-    VALUES (pt.user_id, pt.from_account_id, 'Transfer', 'Transfer', pt.amount, 'debit', pt.note, now());
-
-    INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
-    VALUES (pt.user_id, pt.to_account_id, 'Transfer', 'Transfer', pt.amount, 'credit', pt.note, now());
+  -- External transfers are already debited, just mark as approved
+  -- Between-account transfers are now immediate and don't use pending_transfers
+  IF pt.transfer_type = 'external' THEN
+    -- Funds already debited when transfer was submitted
+    -- Just mark as approved - external bank transfer would be processed here
+    NULL;
   ELSE
-    UPDATE public.accounts SET balance = balance - pt.amount WHERE id = pt.from_account_id;
-
-    INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
-    VALUES (pt.user_id, pt.from_account_id, COALESCE(pt.beneficiary_name, 'External Transfer'), 'Transfer', pt.amount, 'debit', pt.note, now());
+    RETURN json_build_object('ok', FALSE, 'error', 'Internal transfers should not be in pending state');
   END IF;
 
   UPDATE public.pending_transfers
@@ -393,7 +388,7 @@ BEGIN
 END;
 $function$;
 
--- ── Admin: reject a pending transfer ─────────────────────────────────────────
+-- ── Admin: reject a pending transfer (refund debit for external) ───────────────
 CREATE OR REPLACE FUNCTION public.admin_reject_transfer(p_id uuid, p_note text DEFAULT NULL::text)
  RETURNS json
  LANGUAGE plpgsql
@@ -412,6 +407,14 @@ BEGIN
   END IF;
   IF pt.status <> 'pending' THEN
     RETURN json_build_object('ok', FALSE, 'error', 'Transfer already ' || pt.status || '.');
+  END IF;
+
+  -- For external transfers, refund the debit since funds were already deducted
+  IF pt.transfer_type = 'external' THEN
+    UPDATE public.accounts SET balance = balance + pt.amount WHERE id = pt.from_account_id;
+
+    INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
+    VALUES (pt.user_id, pt.from_account_id, 'Transfer Refund', 'Transfer', pt.amount, 'credit', 'Rejected transfer: ' || COALESCE(pt.note, pt.reference), now());
   END IF;
 
   UPDATE public.pending_transfers

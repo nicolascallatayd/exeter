@@ -22,7 +22,7 @@ import { toast } from "sonner";
 const DEFAULT_PENDING_MESSAGE =
   "Your transfer has been submitted and is now pending review. Funds will be released once it has been approved by our team.";
 
-type TransferMode = "own" | "external" | "deposit";
+type TransferMode = "own" | "external";
 type OwnStep     = "from" | "to"   | "amount"  | "confirm" | "success";
 type ExtStep     = "mode" | "recipient" | "details" | "amount" | "confirm" | "success";
 
@@ -133,7 +133,6 @@ const TransferPage = () => {
 
   const transferOwn       = useTransfer();
   const sendExternal      = useSendExternalTransfer();
-  const deposit           = useDeposit();
   const addBeneficiary    = useAddBeneficiary();
   const deleteBeneficiary = useDeleteBeneficiary();
   const customMessages    = useCustomMessages();
@@ -163,18 +162,12 @@ const TransferPage = () => {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [saveAsBeneficiary, setSave]        = useState(false);
 
-  // ── Deposit state ──────────────────────────────────────────
-  const [depositAccountId, setDepositAccountId] = useState<string | null>(null);
-  const [depositAmount, setDepositAmount]       = useState("");
-  const [depositNote, setDepositNote]           = useState("");
-  const [depositStep, setDepositStep]           = useState<"account" | "amount" | "confirm" | "success">("account");
 
   // ── Derived ────────────────────────────────────────────────
   const sendable     = (accounts ?? []).filter((a) => a.type !== "credit" && (a.account_state ?? a.status) === "active");
   const fromAccount  = accounts?.find((a) => a.id === fromId) ?? null;
   const toAccount    = accounts?.find((a) => a.id === toId)   ?? null;
   const selectedBene = beneficiaries?.find((b) => b.id === selectedBeneId) ?? null;
-  const depositAcct  = accounts?.find((a) => a.id === depositAccountId) ?? null;
   const parsedAmount = parseFloat(amount) || 0;
   const fmtAmount    = parsedAmount > 0 ? formatCurrency(parsedAmount) : "$0.00";
 
@@ -190,8 +183,7 @@ const TransferPage = () => {
     setSelectedBeneId(null); setRecipientName(""); setBankName("");
     setAccountNumber(""); setRoutingNumber(""); setIban(""); setSwiftBic("");
     setRecipientEmail(""); setSave(false);
-    setDepositAccountId(null); setDepositAmount(""); setDepositNote("");
-    setDepositStep("account"); setSuccess(null);
+    setSuccess(null);
     setOtpCode("");
   };
 
@@ -260,20 +252,6 @@ const TransferPage = () => {
     );
   };
 
-  const handleDeposit = () => {
-    if (!depositAccountId || !depositAmount) return;
-    const amt = parseFloat(depositAmount);
-    deposit.mutate(
-      { accountId: depositAccountId, amount: amt, note: depositNote || undefined },
-      {
-        onSuccess: () => {
-          setSuccess({ ref: "", to: depositAcct?.name ?? "", amount: formatCurrency(amt) });
-          setDepositStep("success");
-        },
-        onError: (e: Error) => toast.error(e.message),
-      }
-    );
-  };
 
   // ── Mode selector ──────────────────────────────────────────
 
@@ -297,12 +275,6 @@ const TransferPage = () => {
               icon: Building2,
               title: "Send to Another Bank",
               desc: "Transfer to any bank account via ACH, SWIFT, or IBAN. Save recipients as beneficiaries.",
-            },
-            {
-              key: "deposit" as TransferMode,
-              icon: ArrowDownLeft,
-              title: "Deposit / Top Up",
-              desc: "Add funds to any of your accounts — simulate an incoming wire or payroll deposit.",
             },
           ].map(({ key, icon: Icon, title, desc }) => (
             <motion.button
@@ -357,116 +329,6 @@ const TransferPage = () => {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // MODE: DEPOSIT
-  // ─────────────────────────────────────────────────────────────
-
-  if (mode === "deposit") {
-    const depositParsed = parseFloat(depositAmount) || 0;
-
-    return (
-      <div className="mx-auto max-w-lg space-y-6">
-        <div className="flex items-center gap-3">
-          {depositStep !== "success" && (
-            <button onClick={depositStep === "account" ? resetAll : () => setDepositStep("account")}
-              className="text-muted-foreground hover:text-foreground">
-              <ChevronLeft size={20} />
-            </button>
-          )}
-          <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Deposit Funds</h1>
-            <p className="text-sm text-muted-foreground">Add money to your account.</p>
-          </div>
-        </div>
-
-        <AnimatePresence mode="wait">
-          {depositStep === "account" && (
-            <motion.div key="dep-account" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="space-y-3">
-              <p className="text-sm font-medium text-foreground">Select the account to deposit into:</p>
-              {sendable.map((a) => (
-                <AccountRow key={a.id} account={a} selected={depositAccountId === a.id}
-                  onClick={() => { setDepositAccountId(a.id); setDepositStep("amount"); }} />
-              ))}
-            </motion.div>
-          )}
-
-          {depositStep === "amount" && depositAcct && (
-            <motion.div key="dep-amount" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="space-y-6">
-              <div className="rounded border border-border/40 bg-gradient-card p-4">
-                <p className="text-xs text-muted-foreground">Depositing into</p>
-                <p className="text-sm font-semibold text-foreground mt-0.5">{depositAcct.name}</p>
-                <p className="text-xs text-muted-foreground">Current balance: {formatCurrency(depositAcct.balance)}</p>
-              </div>
-              <div className="text-center">
-                <p className="mb-2 text-xs text-muted-foreground">Deposit amount</p>
-                <div className="relative mx-auto max-w-xs">
-                  <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={24} />
-                  <input type="number" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
-                    placeholder="0.00" min="0.01" step="0.01" autoFocus
-                    className="w-full rounded border border-border/50 bg-muted/30 py-4 pl-12 pr-4 text-center font-display text-3xl font-bold text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {[100, 500, 1000, 5000].map((v) => (
-                  <button key={v} onClick={() => setDepositAmount(v.toString())}
-                    className={`flex-1 rounded border py-2 text-xs font-medium transition-colors ${depositAmount === v.toString() ? "border-primary bg-primary/10 text-primary" : "border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground"}`}>
-                    ${v.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">Reference (optional)</Label>
-                <Input placeholder="e.g. Payroll, Wire transfer" value={depositNote} onChange={(e) => setDepositNote(e.target.value)}
-                  className="border-border/50 bg-muted/50 text-foreground" />
-              </div>
-              <Button variant="hero" className="w-full" size="lg"
-                disabled={!depositAmount || depositParsed <= 0}
-                onClick={() => setDepositStep("confirm")}>
-                Review Deposit <ArrowRight size={18} />
-              </Button>
-            </motion.div>
-          )}
-
-          {depositStep === "confirm" && depositAcct && (
-            <motion.div key="dep-confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="space-y-6">
-              <div className="rounded border border-border/40 bg-gradient-card p-6 space-y-4">
-                <h2 className="font-display text-lg font-semibold text-foreground text-center">Confirm Deposit</h2>
-                <p className="font-display text-4xl font-bold text-gradient text-center">{formatCurrency(depositParsed)}</p>
-                <div className="space-y-3">
-                  {[
-                    { label: "Into",    value: depositAcct.name },
-                    { label: "Amount",  value: formatCurrency(depositParsed) },
-                    { label: "New balance", value: formatCurrency(depositAcct.balance + depositParsed) },
-                    ...(depositNote ? [{ label: "Reference", value: depositNote }] : []),
-                  ].map((r) => (
-                    <div key={r.label} className="flex justify-between border-b border-border/20 pb-2">
-                      <span className="text-sm text-muted-foreground">{r.label}</span>
-                      <span className="text-sm font-medium text-foreground">{r.value}</span>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="hero" className="w-full" size="lg" onClick={handleDeposit} disabled={deposit.isPending}>
-                  {deposit.isPending ? <><Loader2 size={16} className="animate-spin" /> Processing…</> : "Confirm Deposit"}
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {depositStep === "success" && successData && (
-            <motion.div key="dep-success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
-              className="rounded border border-border/40 bg-gradient-card p-8 text-center space-y-4">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"><Check size={32} className="text-primary" /></div>
-              <h2 className="font-display text-xl font-bold text-foreground">Deposit Successful!</h2>
-              <p className="text-sm text-muted-foreground">{successData.amount} has been added to <span className="font-medium text-foreground">{successData.to}</span>.</p>
-              <div className="flex gap-3 pt-2">
-                <Button variant="hero" className="flex-1" onClick={resetAll}>Done</Button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
 
   // ─────────────────────────────────────────────────────────────
   // MODE: OWN ACCOUNTS
@@ -612,12 +474,11 @@ const TransferPage = () => {
           {ownStep === "success" && successData && (
             <motion.div key="own-success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
               className="rounded border border-border/40 bg-gradient-card p-8 text-center space-y-4">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10"><Clock size={32} className="text-amber-500" /></div>
-              <h2 className="font-display text-xl font-bold text-foreground">Transfer Pending Review</h2>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"><Check size={32} className="text-primary" /></div>
+              <h2 className="font-display text-xl font-bold text-foreground">Transfer Successful!</h2>
               <p className="text-sm text-muted-foreground">
                 {successData.amount} to <span className="font-medium text-foreground">{successData.to}</span>
               </p>
-              <p className="mx-auto max-w-sm text-sm text-muted-foreground">{successData.message || DEFAULT_PENDING_MESSAGE}</p>
               <p className="font-mono text-xs text-muted-foreground">Ref: {successData.ref}</p>
               <div className="flex gap-3 pt-2">
                 <Button variant="hero" className="flex-1" onClick={resetAll}>New Transfer</Button>
