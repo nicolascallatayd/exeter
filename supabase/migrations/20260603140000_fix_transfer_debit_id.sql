@@ -89,10 +89,12 @@ BEGIN
   UPDATE public.accounts SET balance = balance - p_amount WHERE id = p_from_id;
   UPDATE public.accounts SET balance = balance + p_amount WHERE id = p_to_id;
 
+  -- Insert debit transaction
   INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
   VALUES (p_user_id, p_from_id, 'Transfer', 'Transfer', p_amount, 'debit', p_note, now())
   RETURNING id INTO debit_id;
 
+  -- Insert credit transaction
   INSERT INTO public.transactions (user_id, account_id, name, category, amount, type, note, created_at)
   VALUES (p_user_id, p_to_id, 'Transfer', 'Transfer', p_amount, 'credit', p_note, now())
   RETURNING id INTO credit_id;

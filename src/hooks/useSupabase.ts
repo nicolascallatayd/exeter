@@ -13,19 +13,27 @@ import { useAuth } from "@/contexts/AuthContext";
 // Helper function to send transaction alert email
 const sendTransactionAlert = async (userId: string, transactionId: string) => {
   try {
+    console.log("Fetching transaction for notification:", transactionId);
     const { data, error } = await supabase.rpc("get_transaction_for_notification", {
       p_transaction_id: transactionId,
     });
-    if (error || !data?.ok) return;
+    console.log("Transaction data response:", data, error);
+    if (error || !data?.ok) {
+      console.error("Failed to get transaction for notification:", error);
+      return;
+    }
     
-    const transactionData = data as { user_id: string; user_email: string; user_name: string; transaction: any };
+    const transactionData = data as { user_id: string; user_email: string; user_name: string; account_last4: string; transaction: any };
+    console.log("Sending email alert for transaction:", transactionData.transaction);
     
     await supabase.functions.invoke("send-transaction-alert", {
       body: {
         userId: transactionData.user_id,
         transaction: transactionData.transaction,
+        accountLast4: transactionData.account_last4,
       },
     });
+    console.log("Email alert sent successfully");
   } catch (err) {
     console.error("Failed to send transaction alert:", err);
   }
@@ -151,6 +159,7 @@ export const useTransfer = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ fromAccountId, toAccountId, amount, note, otpCode }: InternalTransferArgs) => {
+      console.log("Starting transfer:", { fromAccountId, toAccountId, amount, note, otpCode });
       const { data, error } = await supabase.rpc("transfer_funds", {
         p_user_id: user!.id,
         p_from_id: fromAccountId,
@@ -159,22 +168,30 @@ export const useTransfer = () => {
         p_note:    note ?? null,
         p_otp_code: otpCode ?? null,
       });
+      console.log("Transfer RPC response:", data, error);
       if (error) throw new Error(error.message);
       const result = data as TransferResult;
+      console.log("Parsed result:", result);
       if (!result.ok) throw new Error(result.error ?? "Transfer failed.");
       return result;
     },
     onSuccess: async (result) => {
+      console.log("Transfer successful:", result);
       qc.invalidateQueries({ queryKey: keys.accounts(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.transactions(user?.id ?? "") });
       
       // Send email notifications for debit and credit transactions
       if (result.debit_id) {
+        console.log("Sending email for debit transaction:", result.debit_id);
         await sendTransactionAlert(user!.id, result.debit_id);
       }
       if (result.credit_id) {
+        console.log("Sending email for credit transaction:", result.credit_id);
         await sendTransactionAlert(user!.id, result.credit_id);
       }
+    },
+    onError: (error) => {
+      console.error("Transfer failed:", error);
     },
   });
 };
@@ -332,6 +349,7 @@ export const useSendExternalTransfer = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: ExternalTransferArgs) => {
+      console.log("Starting external transfer:", args);
       const { data, error } = await supabase.rpc("send_external_transfer", {
         p_user_id:          user!.id,
         p_account_id:       args.accountId,
@@ -346,12 +364,15 @@ export const useSendExternalTransfer = () => {
         p_iban:             args.iban             ?? null,
         p_otp_code:         args.otpCode          ?? null,
       });
+      console.log("External transfer RPC response:", data, error);
       if (error) throw new Error(error.message);
       const result = data as ExternalTransferResult;
+      console.log("Parsed external transfer result:", result);
       if (!result.ok) throw new Error(result.error ?? "Transfer failed.");
       return result;
     },
     onSuccess: async (result) => {
+      console.log("External transfer successful:", result);
       qc.invalidateQueries({ queryKey: keys.accounts(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.transactions(user?.id ?? "") });
       qc.invalidateQueries({ queryKey: keys.beneficiaries(user?.id ?? "") });
@@ -359,8 +380,12 @@ export const useSendExternalTransfer = () => {
       
       // Send email notification for the transaction if tx_id is available
       if (result.tx_id) {
+        console.log("Sending email for external transfer transaction:", result.tx_id);
         await sendTransactionAlert(user!.id, result.tx_id);
       }
+    },
+    onError: (error) => {
+      console.error("External transfer failed:", error);
     },
   });
 };

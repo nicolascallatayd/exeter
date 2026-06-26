@@ -1,39 +1,4 @@
--- Transaction Email Alert Function
--- This function sends an email notification to the user for a given transaction
--- It can be called from other RPC functions after creating a transaction
-
-CREATE OR REPLACE FUNCTION public.notify_transaction_email(
-  p_user_id UUID,
-  p_transaction_id UUID
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_transaction RECORD;
-  v_result JSONB;
-BEGIN
-  -- Get the transaction details
-  SELECT * INTO v_transaction
-  FROM public.transactions
-  WHERE id = p_transaction_id AND user_id = p_user_id;
-  
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'Transaction not found');
-  END IF;
-  
-  -- Return success - the actual email sending will be handled by the Edge Function
-  -- called from the application layer after the RPC completes
-  RETURN jsonb_build_object('ok', true, 'transaction_id', p_transaction_id);
-END;
-$$;
-
--- Grant execute permission
-GRANT EXECUTE ON FUNCTION public.notify_transaction_email(UUID, UUID) TO authenticated;
-
--- Helper function to be called from application layer
--- This wraps the Edge Function call for transaction alerts
+-- Update get_transaction_for_notification to include account last 4 digits
 CREATE OR REPLACE FUNCTION public.get_transaction_for_notification(p_transaction_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
