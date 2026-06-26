@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, ArrowLeftRight,
   CreditCard, PiggyBank, TrendingUp, Send,
-  Settings, LogOut, ArrowDownLeft, Shield,
+  Settings, LogOut, Shield,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,7 +20,6 @@ const mainItems = [
   { title: "Savings",      url: "/dashboard/savings",      icon: PiggyBank },
   { title: "Investments",  url: "/dashboard/investments",  icon: TrendingUp },
   { title: "Send Money",   url: "/dashboard/transfer",     icon: Send },
-  { title: "Deposit",      url: "/dashboard/deposit",      icon: ArrowDownLeft },
 ];
 
 export function DashboardSidebar() {

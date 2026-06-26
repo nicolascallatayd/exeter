@@ -202,7 +202,7 @@ const TransferPage = () => {
   const handleOwnConfirm = () => {
     if (!fromId || !toId || parsedAmount <= 0) return;
     transferOwn.mutate(
-      { fromAccountId: fromId, toAccountId: toId, amount: parsedAmount, note: note || undefined, otpCode: otpCode || undefined },
+      { fromAccountId: fromId, toAccountId: toId, amount: parsedAmount, note: note, otpCode: otpCode || undefined },
       {
         onSuccess: (data) => {
           setSuccess({
@@ -403,12 +403,12 @@ const TransferPage = () => {
               </div>
               <AmountInput amount={amount} onChange={setAmount} availableBalance={fromAccount.balance} />
               <div className="space-y-2">
-                <Label className="text-foreground">Note (optional)</Label>
+                <Label className="text-foreground">Narration *</Label>
                 <Input placeholder="What's this for?" value={note} onChange={(e) => setNote(e.target.value)}
                   className="border-border/50 bg-muted/50 text-foreground" />
               </div>
               <Button variant="hero" className="w-full" size="lg"
-                disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance}
+                disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance || !note.trim()}
                 onClick={() => { setOwnStep("confirm"); requestTransferOtp(fromAccount.id); }}>
                 Review <ArrowRight size={18} />
               </Button>
@@ -425,8 +425,8 @@ const TransferPage = () => {
                     { label: "From",   value: `${fromAccount.name} (****${fromAccount.account_number})` },
                     { label: "To",     value: `${toAccount.name} (****${toAccount.account_number})` },
                     { label: "Amount", value: fmtAmount },
-                    { label: "Fee",    value: "Free" },
-                    ...(note ? [{ label: "Note", value: note }] : []),
+                    { label: "Fee",       value: "Free" },
+                    { label: "Narration", value: note },
                   ].map((r) => (
                     <div key={r.label} className="flex justify-between border-b border-border/20 pb-2">
                       <span className="text-sm text-muted-foreground">{r.label}</span>
@@ -660,12 +660,12 @@ const TransferPage = () => {
               <>
                 <AmountInput amount={amount} onChange={setAmount} availableBalance={fromAccount.balance} />
                 <div className="space-y-2">
-                  <Label className="text-foreground">Reference / Note (optional)</Label>
+                  <Label className="text-foreground">Narration *</Label>
                   <Input placeholder="Payment reference" value={note} onChange={(e) => setNote(e.target.value)}
                     className="border-border/50 bg-muted/50 text-foreground" />
                 </div>
                 <Button variant="hero" className="w-full" size="lg"
-                  disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance}
+                  disabled={!amount || parsedAmount <= 0 || parsedAmount > fromAccount.balance || !note.trim()}
                   onClick={() => { setExtStep("confirm"); requestTransferOtp(fromAccount.id); }}>
                   Review Transfer <ArrowRight size={18} />
                 </Button>
@@ -687,8 +687,8 @@ const TransferPage = () => {
                   { label: "Account",      value: selectedBene ? `****${selectedBene.account_number.slice(-4)}` : accountNumber },
                   { label: "From",         value: `${fromAccount.name} (****${fromAccount.account_number})` },
                   { label: "Amount",       value: fmtAmount },
-                  { label: "Fee",          value: "Free" },
-                  ...(note ? [{ label: "Reference", value: note }] : []),
+                  { label: "Fee",       value: "Free" },
+                  { label: "Narration", value: note },
                 ].map((r) => (
                   <div key={r.label} className="flex justify-between border-b border-border/20 pb-2">
                     <span className="text-sm text-muted-foreground">{r.label}</span>

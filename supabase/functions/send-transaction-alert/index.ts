@@ -92,7 +92,7 @@ serve(async (req) => {
       `Description: ${transaction.name}`,
       `Category: ${transaction.category}`,
       `Date: ${transactionDate}`,
-      transaction.note ? `Note: ${transaction.note}` : "",
+      transaction.note ? `Narration: ${transaction.note}` : "",
       "",
       "If you did not perform this transaction, please contact support immediately.",
       "",

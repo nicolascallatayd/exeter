@@ -156,7 +156,7 @@ BEGIN
     'from_name', from_account.name,
     'to_name',   to_account.name,
     'amount',    p_amount,
-    'debit_id',  debit-id,
+    'debit_id',  debit_id,
     'credit_id', credit_id
   );
 END;
