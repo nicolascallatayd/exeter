@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
-import { Search, Wallet, Loader2, ArrowDownLeft, Trash2, Shield, PlusCircle } from "lucide-react";
+import { Search, Wallet, Loader2, ArrowDownLeft, Trash2, Shield, PlusCircle, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useAdminAllAccounts, useAdminAdjustBalance, useAdminUpdateAccount, useAdminDeleteAccount } from "@/hooks/useAdmin";
+import { useAdminAllAccounts, useAdminAdjustBalance, useAdminUpdateAccount, useAdminDeleteAccount, useAdminCreateAccount, useAdminUsers } from "@/hooks/useAdmin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 
 const AdminAccounts = () => {
   const { data: accounts, isLoading } = useAdminAllAccounts();
+  const { data: users } = useAdminUsers();
   const adjust = useAdminAdjustBalance();
+  const createAccount = useAdminCreateAccount();
 
   const [search, setSearch]           = useState("");
   const [selectedId, setSelectedId]   = useState<string | null>(null);
@@ -22,6 +27,18 @@ const AdminAccounts = () => {
   const [transactionLimit, setTransactionLimit] = useState<string>("");
   const [requiresTransferOtp, setRequiresTransferOtp] = useState(false);
   const [holdReason, setHoldReason] = useState("");
+  
+  // Create account dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createUserId, setCreateUserId] = useState("");
+  const [createAccountName, setCreateAccountName] = useState("");
+  const [createAccountType, setCreateAccountType] = useState<"checking" | "savings" | "investment" | "credit">("checking");
+  const [createBalance, setCreateBalance] = useState("0");
+  const [createAccountNumber, setCreateAccountNumber] = useState("");
+  const [createStatus, setCreateStatus] = useState<"active" | "inactive" | "frozen">("active");
+  const [createTransactionLimit, setCreateTransactionLimit] = useState("");
+  const [createRequiresOtp, setCreateRequiresOtp] = useState(false);
+  const [createHoldReason, setCreateHoldReason] = useState("");
 
   const filtered = (accounts ?? []).filter((a) => {
     const matchSearch =
@@ -54,6 +71,44 @@ const AdminAccounts = () => {
     });
   };
 
+  const handleCreateAccount = () => {
+    if (!createUserId || !createAccountName) {
+      toast.error("Please select a user and enter an account name");
+      return;
+    }
+    
+    createAccount.mutate({
+      userId: createUserId,
+      name: createAccountName,
+      type: createAccountType,
+      balance: parseFloat(createBalance) || 0,
+      accountNumber: createAccountNumber || undefined,
+      status: createStatus,
+      transactionLimit: createTransactionLimit ? parseFloat(createTransactionLimit) : undefined,
+      requiresTransferOtp: createRequiresOtp,
+      holdReason: createHoldReason || undefined,
+    }, {
+      onSuccess: () => {
+        toast.success("Account created successfully");
+        setCreateDialogOpen(false);
+        resetCreateForm();
+      },
+      onError: (e: Error) => toast.error(e.message),
+    });
+  };
+
+  const resetCreateForm = () => {
+    setCreateUserId("");
+    setCreateAccountName("");
+    setCreateAccountType("checking");
+    setCreateBalance("0");
+    setCreateAccountNumber("");
+    setCreateStatus("active");
+    setCreateTransactionLimit("");
+    setCreateRequiresOtp(false);
+    setCreateHoldReason("");
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -61,21 +116,27 @@ const AdminAccounts = () => {
         <p className="text-sm text-muted-foreground">{accounts?.length ?? 0} accounts across all users.</p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search name, number, user ID…"
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="border-border/50 bg-muted/50 pl-10 text-foreground" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Search name, number, user ID…"
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="border-border/50 bg-muted/50 pl-10 text-foreground" />
+          </div>
+          <div className="flex gap-2">
+            {["all", "checking", "savings", "investment", "credit"].map((t) => (
+              <button key={t} onClick={() => setTypeFilter(t)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                  typeFilter === t ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground hover:text-foreground"
+                }`}>{t}</button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-2">
-          {["all", "checking", "savings", "investment", "credit"].map((t) => (
-            <button key={t} onClick={() => setTypeFilter(t)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                typeFilter === t ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground hover:text-foreground"
-              }`}>{t}</button>
-          ))}
-        </div>
+        <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+          <PlusCircle size={16} />
+          Create Account
+        </Button>
       </div>
 
       {/* Balance adjustment panel */}
@@ -169,6 +230,143 @@ const AdminAccounts = () => {
           ))}
         </div>
       )}
+
+      {/* Create Account Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-foreground">User *</Label>
+              <select
+                value={createUserId}
+                onChange={(e) => setCreateUserId(e.target.value)}
+                className="w-full rounded border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              >
+                <option value="">Select a user...</option>
+                {users?.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name || user.email} ({user.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">Account Name *</Label>
+              <Input
+                placeholder="e.g., Primary Checking"
+                value={createAccountName}
+                onChange={(e) => setCreateAccountName(e.target.value)}
+                className="border-border/50 bg-background text-foreground"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">Account Type</Label>
+              <div className="flex gap-2">
+                {(["checking", "savings", "investment", "credit"] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setCreateAccountType(type)}
+                    className={`flex-1 rounded border px-3 py-2 text-xs font-medium capitalize transition-colors ${
+                      createAccountType === type
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-foreground">Initial Balance</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  step="0.01"
+                  value={createBalance}
+                  onChange={(e) => setCreateBalance(e.target.value)}
+                  className="border-border/50 bg-background text-foreground"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Account Number (optional)</Label>
+                <Input
+                  placeholder="Auto-generated if empty"
+                  value={createAccountNumber}
+                  onChange={(e) => setCreateAccountNumber(e.target.value)}
+                  className="border-border/50 bg-background text-foreground"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-foreground">Status</Label>
+                <select
+                  value={createStatus}
+                  onChange={(e) => setCreateStatus(e.target.value as "active" | "inactive" | "frozen")}
+                  className="w-full rounded border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="frozen">Frozen</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Transaction Limit (optional)</Label>
+                <Input
+                  type="number"
+                  placeholder="No limit"
+                  step="0.01"
+                  value={createTransactionLimit}
+                  onChange={(e) => setCreateTransactionLimit(e.target.value)}
+                  className="border-border/50 bg-background text-foreground"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">Hold Reason (if frozen)</Label>
+              <Input
+                placeholder="Reason for account hold"
+                value={createHoldReason}
+                onChange={(e) => setCreateHoldReason(e.target.value)}
+                className="border-border/50 bg-background text-foreground"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="requiresOtp"
+                checked={createRequiresOtp}
+                onChange={(e) => setCreateRequiresOtp(e.target.checked)}
+                className="h-4 w-4 rounded border-border/50 bg-background text-primary focus:ring-2 focus:ring-primary/50"
+              />
+              <Label htmlFor="requiresOtp" className="text-foreground cursor-pointer">
+                Require OTP for transfers
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateAccount} disabled={createAccount.isPending}>
+              {createAccount.isPending ? <><Loader2 size={16} className="animate-spin mr-2" /> Creating...</> : "Create Account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
