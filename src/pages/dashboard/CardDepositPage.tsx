@@ -228,7 +228,7 @@ const CardDepositPage = () => {
   const maxDigits  = isAmex ? 15 : 16;
   const lastFour   = cardNumber.replace(/\s/g, "").slice(-4);
   const parsedAmt  = parseFloat(amount) || 0;
-  const sendable   = (accounts ?? []).filter((a) => a.type !== "credit" && a.status === "active");
+  const sendable   = (accounts ?? []).filter((a) => a.type !== "current" && a.status === "active");
 
   const stepOrder: Step[]  = ["account", "card", "amount", "confirm"];
   const stepLabels         = ["Account", "Card", "Amount", "Confirm"];

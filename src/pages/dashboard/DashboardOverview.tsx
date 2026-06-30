@@ -15,7 +15,7 @@ const accountIcon = (type: string) => {
   switch (type) {
     case "savings":    return PiggyBank;
     case "investment": return TrendingUp;
-    case "credit":     return CreditCard;
+    case "current":    return CreditCard;
     default:           return DollarSign;
   }
 };

@@ -197,7 +197,7 @@ const CryptoDepositPage = () => {
   const [activeDeposit, setActive]  = useState<CryptoDeposit | null>(null);
   const [viewingId, setViewingId]   = useState<string | null>(null);
 
-  const sendable  = (accounts ?? []).filter((a) => a.type !== "credit" && a.status === "active");
+  const sendable  = (accounts ?? []).filter((a) => a.type !== "current" && a.status === "active");
   const account   = accounts?.find((a) => a.id === accountId);
   const parsed    = parseFloat(amount) || 0;
 

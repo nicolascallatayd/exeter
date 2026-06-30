@@ -26,20 +26,20 @@ import { toast } from "sonner";
 
 // ─── Types ─────────────────────────────────────────────────
 
-type AccountType = "checking" | "savings" | "investment" | "credit";
+type AccountType = "checking" | "savings" | "investment" | "current";
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; desc: string }[] = [
   { value: "checking",   label: "Checking",   desc: "Day-to-day spending and transfers" },
   { value: "savings",    label: "Savings",     desc: "High-yield savings at 4.5% APY" },
   { value: "investment", label: "Investment",  desc: "Brokerage account for stocks & ETFs" },
-  { value: "credit",     label: "Credit",      desc: "Revolving credit line" },
+  { value: "current",    label: "Current",     desc: "Current account for day-to-day transactions" },
 ];
 
 const accountIcon = (type: string) => {
   switch (type) {
     case "savings":    return PiggyBank;
     case "investment": return TrendingUp;
-    case "credit":     return CreditCard;
+    case "current":    return CreditCard;
     default:           return DollarSign;
   }
 };

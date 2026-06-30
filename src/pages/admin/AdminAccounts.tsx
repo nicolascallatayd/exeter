@@ -32,7 +32,7 @@ const AdminAccounts = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createUserId, setCreateUserId] = useState("");
   const [createAccountName, setCreateAccountName] = useState("");
-  const [createAccountType, setCreateAccountType] = useState<"checking" | "savings" | "investment" | "credit">("checking");
+  const [createAccountType, setCreateAccountType] = useState<"checking" | "savings" | "investment" | "current">("checking");
   const [createBalance, setCreateBalance] = useState("0");
   const [createAccountNumber, setCreateAccountNumber] = useState("");
   const [createStatus, setCreateStatus] = useState<"active" | "inactive" | "frozen">("active");
@@ -125,7 +125,7 @@ const AdminAccounts = () => {
               className="border-border/50 bg-muted/50 pl-10 text-foreground" />
           </div>
           <div className="flex gap-2">
-            {["all", "checking", "savings", "investment", "credit"].map((t) => (
+            {["all", "checking", "savings", "investment", "current"].map((t) => (
               <button key={t} onClick={() => setTypeFilter(t)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
                   typeFilter === t ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground hover:text-foreground"
@@ -267,7 +267,7 @@ const AdminAccounts = () => {
             <div className="space-y-2">
               <Label className="text-foreground">Account Type</Label>
               <div className="flex gap-2">
-                {(["checking", "savings", "investment", "credit"] as const).map((type) => (
+                {(["checking", "savings", "investment", "current"] as const).map((type) => (
                   <button
                     key={type}
                     onClick={() => setCreateAccountType(type)}

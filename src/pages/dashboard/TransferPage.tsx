@@ -164,7 +164,7 @@ const TransferPage = () => {
 
 
   // ── Derived ────────────────────────────────────────────────
-  const sendable     = (accounts ?? []).filter((a) => a.type !== "credit" && (a.account_state ?? a.status) === "active");
+  const sendable     = (accounts ?? []).filter((a) => a.type !== "current" && (a.account_state ?? a.status) === "active");
   const fromAccount  = accounts?.find((a) => a.id === fromId) ?? null;
   const toAccount    = accounts?.find((a) => a.id === toId)   ?? null;
   const selectedBene = beneficiaries?.find((b) => b.id === selectedBeneId) ?? null;
