@@ -320,10 +320,11 @@ export const useAdminDeleteUser = () => {
 export const useAdminSetUserStatus = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ userId, status }: { userId: string; status: AdminUserStatus }) => {
+    mutationFn: async ({ userId, status, reason }: { userId: string; status: AdminUserStatus; reason?: string | null }) => {
       const { data, error } = await supabase.rpc("admin_set_user_status", {
         p_user_id: userId,
         p_status:  status,
+        p_hold_reason: reason ?? null,
       });
       if (error) throw new Error(error.message);
       const r = data as { ok: boolean; error?: string };

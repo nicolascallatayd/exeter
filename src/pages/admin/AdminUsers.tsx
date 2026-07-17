@@ -387,6 +387,7 @@ const UserDetail = ({
   const [savingProfile,  setSavingProfile]  = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
   const [pendingStatus,  setPendingStatus]  = useState<AdminUserStatus | null>(null);
+  const [holdReason,     setHoldReason]     = useState<string>("");
   const [msgByAccount,   setMsgByAccount]   = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -404,6 +405,7 @@ const UserDetail = ({
       postal_code:    field("postal_code"),
       country:        field("country"),
     });
+    setHoldReason(((data["hold_reason"] as string | null | undefined) ?? "").toString());
     setAvatarFile(null);
     setAvatarPreview(null);
   }, [user]);
@@ -476,7 +478,12 @@ const UserDetail = ({
 
   const handleDelete = () => setConfirmDelete(true);
 
-  const handleSetStatus = (status: AdminUserStatus) => setPendingStatus(status);
+  const handleSetStatus = (status: AdminUserStatus) => {
+    setPendingStatus(status);
+    if (status === "on_hold") {
+      setHoldReason((user.profile_data?.hold_reason as string | null | undefined) ?? "");
+    }
+  };
 
   const currentStatus = user.approval_status ?? "pending";
   const statusBusy = setStatus.isPending;
@@ -540,6 +547,12 @@ const UserDetail = ({
             <p className="text-xs text-muted-foreground">
               Current status: <StatusBadge status={currentStatus} />
             </p>
+            {currentStatus === "on_hold" && (
+              <div className="rounded border border-border/40 bg-muted/20 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Current hold reason</p>
+                <p className="mt-1 whitespace-pre-wrap">{holdReason || "No reason has been provided yet."}</p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {currentStatus !== "approved" && (
                 <Button size="sm" variant="hero" onClick={() => handleSetStatus("approved")} disabled={statusBusy}>
@@ -837,6 +850,18 @@ const UserDetail = ({
                 {pendingStatus ? STATUS_ACTION_LABELS[pendingStatus] : ""}
               </span>{" "}
               this user?
+              {pendingStatus === "on_hold" && (
+                <div className="mt-3 space-y-2 rounded border border-border/40 bg-muted/20 p-3 text-left">
+                  <Label className="text-xs font-medium text-foreground">Reason for hold</Label>
+                  <textarea
+                    value={holdReason}
+                    onChange={(e) => setHoldReason(e.target.value)}
+                    rows={3}
+                    placeholder="Enter the reason this account is on hold."
+                    className="w-full rounded border border-border/50 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none"
+                  />
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -845,7 +870,7 @@ const UserDetail = ({
               onClick={() => {
                 if (!pendingStatus) return;
                 setStatus.mutate(
-                  { userId: user.id, status: pendingStatus },
+                  { userId: user.id, status: pendingStatus, reason: pendingStatus === "on_hold" ? holdReason.trim() || null : null },
                   {
                     onSuccess: () =>
                       toast.success(`User status updated to ${pendingStatus.replace("_", " ")}.`),

@@ -4,7 +4,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { useAuth, type ApprovalStatus } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useAdmin";
-import { Loader2, ShieldAlert, Snowflake, PauseCircle, LogOut } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 import ReauthModal from "@/components/ReauthModal";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import PendingApprovalPage from "@/pages/PendingApprovalPage";
@@ -12,40 +12,14 @@ import PhoneVerificationStep from "@/components/PhoneVerificationStep";
 import UserMenu from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
+import { getBlockedStatusCopy, type BlockedStatus } from "@/lib/accountStatusContent";
 
 // Statuses that keep the sidebar visible but block the content area
 const SIDEBAR_BLOCKED: ApprovalStatus[] = ["suspended", "frozen", "on_hold"];
 
-const BLOCKED_CONTENT: Record<
-  "suspended" | "frozen" | "on_hold",
-  { icon: React.ElementType; color: string; badge: string; heading: string; body: string }
-> = {
-  suspended: {
-    icon: ShieldAlert,
-    color: "text-orange-500",
-    badge: "bg-orange-500/10 border-orange-500/30 text-orange-500",
-    heading: "Account suspended",
-    body: "Your account has been temporarily suspended. Please contact support if you believe this is a mistake.",
-  },
-  frozen: {
-    icon: Snowflake,
-    color: "text-blue-500",
-    badge: "bg-blue-500/10 border-blue-500/30 text-blue-500",
-    heading: "Account frozen",
-    body: "Your account has been frozen pending further review. Please contact support for assistance.",
-  },
-  on_hold: {
-    icon: PauseCircle,
-    color: "text-muted-foreground",
-    badge: "bg-muted/50 border-border/50 text-muted-foreground",
-    heading: "Account on hold",
-    body: "Your account is temporarily on hold. Our team is reviewing your information and will reach out shortly.",
-  },
-};
-
-const BlockedContent = ({ status }: { status: "suspended" | "frozen" | "on_hold" }) => {
+const BlockedContent = ({ status, reason }: { status: BlockedStatus; reason?: string | null }) => {
   const { logout } = useAuth();
-  const cfg = BLOCKED_CONTENT[status];
+  const cfg = getBlockedStatusCopy(status, reason);
   const Icon = cfg.icon;
   return (
     <div className="flex flex-1 items-center justify-center p-10">
@@ -71,6 +45,7 @@ const BlockedContent = ({ status }: { status: "suspended" | "frozen" | "on_hold"
 
 const DashboardLayout = () => {
   const { user, profile, loading, refreshProfile } = useAuth();
+  const blockedReason = profile?.hold_reason ?? null;
 
   const skipPhoneVerification = import.meta.env.VITE_SKIP_PHONE_VERIFICATION === "true";
 
@@ -138,7 +113,7 @@ const DashboardLayout = () => {
           </header>
           <main className="flex flex-1 overflow-auto">
             {isSidebarBlocked ? (
-              <BlockedContent status={status as "suspended" | "frozen" | "on_hold"} />
+              <BlockedContent status={status as BlockedStatus} reason={blockedReason} />
             ) : (
               <div className="flex-1 p-6">
                 <Outlet />

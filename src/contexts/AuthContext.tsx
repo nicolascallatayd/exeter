@@ -26,7 +26,7 @@ export interface SignupProfileData {
   kycDocuments?: { type: KycDocument["type"]; file: File }[];
 }
 
-interface Profile {
+export interface Profile {
   id: string;
   full_name: string | null;
   email: string;
@@ -34,6 +34,7 @@ interface Profile {
   profile_data?: Record<string, unknown> | null;
   approval_status: ApprovalStatus;
   phone_verified: boolean;
+  hold_reason?: string | null;
 }
 
 interface AuthContextType {

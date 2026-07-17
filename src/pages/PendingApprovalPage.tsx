@@ -1,12 +1,10 @@
 import { motion } from "framer-motion";
-import { Clock, ShieldAlert, Snowflake, PauseCircle, LogOut } from "lucide-react";
+import { Clock, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth, type ApprovalStatus } from "@/contexts/AuthContext";
+import { getBlockedStatusCopy, type BlockedStatus } from "@/lib/accountStatusContent";
 
-const STATUS_CONFIG: Record<
-  Exclude<ApprovalStatus, "approved">,
-  { icon: React.ElementType; color: string; badge: string; heading: string; body: string }
-> = {
+const STATUS_CONFIG = {
   pending: {
     icon: Clock,
     color: "text-yellow-500",
@@ -14,33 +12,14 @@ const STATUS_CONFIG: Record<
     heading: "Your account is under review",
     body: "We're verifying your identity documents. This usually takes 1–2 business days. You'll be able to access your dashboard once approved.",
   },
-  suspended: {
-    icon: ShieldAlert,
-    color: "text-orange-500",
-    badge: "bg-orange-500/10 border-orange-500/30 text-orange-500",
-    heading: "Your account has been suspended",
-    body: "Your account has been temporarily suspended. Please contact support if you believe this is a mistake.",
-  },
-  frozen: {
-    icon: Snowflake,
-    color: "text-blue-500",
-    badge: "bg-blue-500/10 border-blue-500/30 text-blue-500",
-    heading: "Your account is frozen",
-    body: "Your account has been frozen pending further review. Please contact support for assistance.",
-  },
-  on_hold: {
-    icon: PauseCircle,
-    color: "text-muted-foreground",
-    badge: "bg-muted/50 border-border/50 text-muted-foreground",
-    heading: "Your account is on hold",
-    body: "Your account is temporarily on hold. Our team is reviewing your information and will reach out shortly.",
-  },
-};
+} as const;
 
 const PendingApprovalPage = () => {
   const { profile, logout } = useAuth();
   const status = (profile?.approval_status ?? "pending") as Exclude<ApprovalStatus, "approved">;
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
+  const cfg = status === "pending"
+    ? STATUS_CONFIG.pending
+    : getBlockedStatusCopy(status as BlockedStatus, profile?.hold_reason ?? null);
   const Icon = cfg.icon;
 
   return (
